@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: api (NestJS)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      # postinstall 에서 prisma generate 가 돈다 (src/database/generated 는 커밋하지 않는다)
+      - run: npm ci
+      - run: npm run lint:check
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm run test:e2e
+      - run: npm run build
+
+  web:
+    name: web (Next.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  agent-bridge:
+    name: agent-bridge
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/agent-bridge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/agent-bridge/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  cli:
+    name: CLI (${{ matrix.tool }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [aws-snapshot, k8s-snapshot]
+    defaults:
+      run:
+        working-directory: deploy/${{ matrix.tool }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: deploy/${{ matrix.tool }}/package-lock.json
+      - run: npm ci
+      # 테스트는 가짜 kube API·가짜 former2 로 돈다. 실제 클러스터·AWS 자격증명을 쓰지 않는다.
+      - run: npm test
+
+  secret-scan:
+    name: 스냅샷 비밀값 스캔
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # 커밋된 스냅샷 폴더가 있으면 CLI 스캐너로 다시 훑는다 (없으면 통과)
+      - name: aws-snapshot 스냅샷 스캔
+        run: |
+          if [ -n "$(find deploy/aws-snapshot/snapshots -mindepth 1 -maxdepth 1 -type d 2>/dev/null)" ]; then
+            npm ci --prefix deploy/aws-snapshot
+            npm run scan --prefix deploy/aws-snapshot
+          else
+            echo "커밋된 AWS 스냅샷 없음 — 건너뜀"
+          fi
+      - name: k8s-snapshot 스냅샷 스캔
+        run: |
+          if [ -n "$(find deploy/k8s-snapshot/snapshots -mindepth 1 -maxdepth 1 -type d 2>/dev/null)" ]; then
+            npm ci --prefix deploy/k8s-snapshot
+            npm run scan --prefix deploy/k8s-snapshot
+          else
+            echo "커밋된 k8s 스냅샷 없음 — 건너뜀"
+          fi
