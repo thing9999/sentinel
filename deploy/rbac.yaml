@@ -1,0 +1,84 @@
+# Sentinel 대시보드 API용 읽기 전용 RBAC (CLAUDE.md "확정된 결정")
+# - 동사는 get/list/watch만. create/update/patch/delete, pods/exec, pods/log, pods/portforward 없음
+# - secrets, configmaps 없음 (비밀값을 조회하지 않는다)
+# - nodes/proxy 없음 (PVC 사용량은 Prometheus 또는 DB 크기 근사치, PM 결정)
+# - replicasets/jobs 없음: 파드의 ownerReference·pod-template-hash로 소속을 해석한다
+#
+# 적용: kubectl apply -f deploy/rbac.yaml
+# 확인: kubectl auth can-i --list --as=system:serviceaccount:sentinel:sentinel-api
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sentinel
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sentinel-api
+  namespace: sentinel
+  labels:
+    app.kubernetes.io/name: sentinel-api
+    app.kubernetes.io/part-of: sentinel
+  # EKS IRSA로 AWS 읽기 전용 권한을 줄 때 (aws-cost 기능):
+  # annotations:
+  #   eks.amazonaws.com/role-arn: arn:aws:iam::<account-id>:role/sentinel-api-readonly
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sentinel-readonly
+  labels:
+    app.kubernetes.io/name: sentinel-api
+    app.kubernetes.io/part-of: sentinel
+rules:
+  # 코어: 노드·파드·네임스페이스·이벤트·PVC·서비스
+  - apiGroups: [""]
+    resources:
+      - pods
+      - nodes
+      - namespaces
+      - events
+      - persistentvolumeclaims
+      - services
+    verbs: ["get", "list", "watch"]
+  # 워크로드
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list", "watch"]
+  # 인그레스 (비용: 로드밸런서 연결, 어드바이저)
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+  # PodDisruptionBudget (어드바이저 R-PDB)
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+  # HPA (어드바이저)
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+  # metrics-server (CPU·메모리 사용량)
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sentinel-readonly
+  labels:
+    app.kubernetes.io/name: sentinel-api
+    app.kubernetes.io/part-of: sentinel
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sentinel-readonly
+subjects:
+  - kind: ServiceAccount
+    name: sentinel-api
+    namespace: sentinel

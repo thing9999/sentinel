@@ -1,0 +1,14 @@
+# aws-snapshot 전용 (루트 .gitignore 와 별도로 이 폴더에서도 보장)
+# 로컬 설정: 프로필·필터만 있지만 비밀값 규칙상 커밋하지 않는다
+.env
+.env.*
+!.env.example
+# raw 데이터: former2 가 읽은 원본(환경 변수·정책 원문 등)이 그대로 들어 있다
+.raw/
+*.raw.json
+raw-data.json
+# 대시보드 휴지통 (지운 스냅샷. git·CLI 스캔 대상 아님, 자동으로 비우지 않음)
+snapshots/.trash/
+# 대시보드 원자적 저장 도중의 임시 파일
+snapshots/**/.*.sentinel-tmp-*
+node_modules/

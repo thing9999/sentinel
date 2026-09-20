@@ -1,0 +1,268 @@
+/*
+ * 퍼블리셔 영역: 전역 스타일.
+ * - 색·간격·글자는 tokens.css(= docs/design/tokens.json)의 CSS 변수만 쓴다.
+ * - @media 의 폭 값은 CSS 변수를 쓸 수 없어 tokens.json breakpoint 값을 그대로 적는다
+ *   (sm 1024px, md 1280px, lg 1440px). 360px 대응을 위해 767px 이하 규칙을 추가했다.
+ * - 셸 레이아웃 클래스: docs/design/shell.md 1절 (app-shell, app-header, app-banner, app-body, app-nav, app-main)
+ * - 배치·글자 유틸리티(stack, row, grid-auto, gap-*, text-*): utilities.css
+ */
+@import "./tokens.css";
+@import "./utilities.css";
+
+/* ───────── 리셋 (기존 최소 리셋 유지) ───────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  font: var(--font-body);
+  letter-spacing: var(--font-body-letter-spacing);
+  color: var(--color-text-primary);
+  background: var(--color-bg-canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+img,
+svg,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+/* 글자 안에 들어가는 아이콘은 inline 흐름을 깨지 않게 컴포넌트에서 display를 다시 지정한다 */
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+ul,
+ol,
+dl,
+dd,
+figure {
+  margin: 0;
+}
+
+a {
+  color: var(--color-text-link);
+}
+
+a:hover {
+  color: var(--color-text-link-hover);
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--font-family-mono);
+}
+
+/* ───────── 포커스 ─────────
+ * status.md 7절: 포커스 링 = 2px 간격 + 2px 링 (shadow.focus 와 같은 모양).
+ * box-shadow 는 스크롤 컨테이너에 잘리므로 outline + offset 으로 같은 모양을 그린다.
+ */
+:focus-visible {
+  outline: var(--size-focus-ring-width) solid var(--color-border-focus);
+  outline-offset: var(--size-focus-ring-width);
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ───────── 유틸리티 ───────── */
+
+/* 화면에는 안 보이고 스크린리더만 읽는다.
+ * left: 0 — overflow:hidden 인 비-positioned 부모 안에서 absolute 요소가 빠져나가
+ * 문서 가로 폭을 늘리는 문제(360px 가로 스크롤)를 막는다. */
+.sr-only {
+  position: absolute;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.tabular {
+  font-variant-numeric: var(--font-numeric);
+}
+
+.mono {
+  font-family: var(--font-family-mono);
+}
+
+/* ───────── 셸 (shell.md) ───────── */
+
+.app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--color-bg-canvas);
+  color: var(--color-text-primary);
+}
+
+.app-skip-link {
+  position: absolute;
+  left: var(--spacing-2);
+  top: var(--spacing-2);
+  z-index: var(--z-index-tooltip);
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface-raised);
+  color: var(--color-text-link);
+  font: var(--font-body-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-200%);
+}
+
+.app-skip-link:focus-visible {
+  transform: none;
+}
+
+/* TopBar: 56px, sticky top 0 */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-index-top-bar);
+  height: var(--size-top-bar);
+  background: var(--color-bg-surface);
+  border-bottom: var(--border-width-thin) solid var(--color-border-subtle);
+}
+
+/* ConnectionBanner 자리: 상단바 바로 아래, sticky top 56px */
+.app-banner {
+  position: sticky;
+  top: var(--size-top-bar);
+  z-index: var(--z-index-banner);
+}
+
+.app-body {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+/* SideNav: 232px(펼침) / 64px(접힘), 높이 = 뷰포트 − 56px, sticky */
+.app-body > .app-nav {
+  position: sticky;
+  top: var(--size-top-bar);
+  z-index: var(--z-index-side-nav);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: var(--size-side-nav-expanded);
+  height: calc(100vh - var(--size-top-bar));
+  height: calc(100dvh - var(--size-top-bar));
+  background: var(--color-bg-surface);
+  border-right: var(--border-width-thin) solid var(--color-border-subtle);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.app-body > .app-nav[data-collapsed="true"] {
+  width: var(--size-side-nav-collapsed);
+}
+
+/* 본문: 패딩 24px, 내용 최대 폭 1600px(왼쪽 정렬) */
+.app-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--size-content-padding-y) var(--size-content-padding-x);
+  background: var(--color-bg-canvas);
+}
+
+.app-main:focus {
+  outline: none;
+}
+
+.app-main-inner {
+  max-width: var(--size-content-max-width);
+  min-width: 0;
+}
+
+.app-nav-scrim {
+  display: none;
+}
+
+/* 1280px 미만: SideNav 숨김, 메뉴 버튼으로 오버레이 드로어(폭 232px, scrim bg.scrim) */
+@media (max-width: 1279px) {
+  .app-body > .app-nav {
+    display: none;
+  }
+
+  .app-shell[data-nav-open="true"] .app-body > .app-nav {
+    display: flex;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: var(--z-index-drawer);
+    width: min(var(--size-side-nav-expanded), 100vw);
+    height: 100vh;
+    height: 100dvh;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .app-shell[data-nav-open="true"] .app-nav-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--z-index-drawer) - 1);
+    border: 0;
+    padding: 0;
+    background: var(--color-bg-scrim);
+    cursor: default;
+  }
+}
+
+/* 767px 이하(모바일, 360px까지): 본문 패딩을 16px로 줄여 가로 스크롤을 막는다 */
+@media (max-width: 767px) {
+  .app-main {
+    padding: var(--spacing-4);
+  }
+}
+
+/* ───────── 페이지 공통 여백 (shell.md 6절) ───────── */
+
+.page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+  min-width: 0;
+}
+
+/* 움직임 줄이기 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}

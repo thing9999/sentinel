@@ -1,0 +1,250 @@
+/* components.md 5절 오버레이 */
+
+/* ───── Tooltip ───── */
+.tooltipAnchor {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+}
+
+div.tooltipAnchor {
+  display: flex;
+}
+
+.tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: var(--z-index-tooltip);
+  visibility: hidden;
+  display: block;
+  width: max-content;
+  max-width: min(320px, calc(100vw - var(--spacing-4)));
+  padding: var(--spacing-1-5) var(--spacing-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-text-primary);
+  color: var(--color-text-inverse);
+  font: var(--font-caption);
+  font-variant-numeric: var(--font-numeric);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+  pointer-events: none;
+}
+
+.tooltipMono {
+  font: var(--font-resource-name);
+  max-width: min(480px, calc(100vw - var(--spacing-4)));
+  word-break: break-all;
+}
+
+/* 다크: 배경 bg.surfaceRaised + 1px border.default + 글자 text.primary */
+:global([data-theme="dark"]) .tooltip {
+  background: var(--color-bg-surface-raised);
+  color: var(--color-text-primary);
+  border: var(--border-width-thin) solid var(--color-border-default);
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme="light"])) .tooltip {
+    background: var(--color-bg-surface-raised);
+    color: var(--color-text-primary);
+    border: var(--border-width-thin) solid var(--color-border-default);
+  }
+}
+
+/* ───── Popover ───── */
+.popoverRoot {
+  display: inline-flex;
+  position: relative;
+  max-width: 100%;
+}
+
+.popoverAnchor {
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.popover {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: var(--z-index-dropdown);
+  visibility: hidden;
+  max-height: min(480px, calc(100vh - var(--spacing-8)));
+  overflow: auto;
+  padding: var(--spacing-3);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface-raised);
+  border: var(--border-width-thin) solid var(--color-border-default);
+  box-shadow: var(--shadow-md);
+  color: var(--color-text-primary);
+}
+
+.popover:focus {
+  outline: none;
+}
+
+/* ───── Dialog / Drawer (native <dialog>) ───── */
+.dialog,
+.drawer {
+  padding: 0;
+  border: var(--border-width-thin) solid var(--color-border-default);
+  background: var(--color-bg-surface-raised);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-lg);
+}
+
+.dialog::backdrop,
+.drawer::backdrop {
+  background: var(--color-bg-scrim);
+}
+
+.dialog {
+  width: calc(100vw - var(--spacing-8));
+  border-radius: var(--radius-xl);
+  z-index: var(--z-index-dialog);
+}
+
+.dialog-sm {
+  max-width: var(--size-dialog-sm);
+}
+
+.dialog-md {
+  max-width: var(--size-dialog-md);
+}
+
+.dialogInner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  padding: var(--spacing-6);
+}
+
+.dialogTitle {
+  font: var(--font-h2);
+}
+
+.dialogDesc {
+  font: var(--font-body);
+  color: var(--color-text-secondary);
+}
+
+.dialogBody {
+  font: var(--font-body);
+}
+
+.dialogActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--spacing-2);
+  margin-top: var(--spacing-3);
+}
+
+.drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  margin: 0;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  width: 100vw;
+  border-radius: 0;
+  border-width: 0 0 0 var(--border-width-thin);
+  z-index: var(--z-index-drawer);
+}
+
+.drawer-md {
+  max-width: var(--size-drawer-md);
+}
+
+.drawer-lg {
+  max-width: var(--size-drawer-lg);
+}
+
+.drawer[open] {
+  animation: drawerIn var(--motion-duration-normal) var(--motion-easing-standard);
+}
+
+@keyframes drawerIn {
+  from {
+    transform: translateX(var(--spacing-6));
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.drawerInner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.drawerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  min-height: var(--size-top-bar);
+  padding: var(--spacing-2) var(--spacing-5);
+  border-bottom: var(--border-width-thin) solid var(--color-border-subtle);
+}
+
+.drawerHeading {
+  min-width: 0;
+}
+
+.drawerTitle {
+  font: var(--font-h3);
+  overflow-wrap: anywhere;
+}
+
+.drawerSubtitle {
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+  font-variant-numeric: var(--font-numeric);
+}
+
+.drawerBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--spacing-5);
+}
+
+.drawerFooter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3) var(--spacing-5);
+  border-top: var(--border-width-thin) solid var(--color-border-subtle);
+}
+
+/* ───── HelpPopover ───── */
+.helpTitle {
+  font: var(--font-body-strong);
+  margin-bottom: var(--spacing-2);
+}
+
+.helpBody {
+  font: var(--font-body);
+  color: var(--color-text-primary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+/* ───── TypeToConfirmDialog (components.md 11.5): 본문 블록 간 12px ───── */
+.typeConfirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  min-width: 0;
+}

@@ -1,0 +1,501 @@
+/*
+ * aws-snapshot-manager 전용 표현 컴포넌트 (components.md 11.1~11.3, aws-snapshot-manager.md 4.5·5절)
+ * 색·간격·글자는 tokens.css 변수만 쓴다.
+ */
+
+/* ───── 공통 색 ───── */
+.fgCrit,
+.lv-crit {
+  color: var(--color-status-crit-fg);
+}
+
+.fgWarn,
+.lv-warn {
+  color: var(--color-status-warn-fg);
+}
+
+.fgOk {
+  color: var(--color-status-ok-fg);
+}
+
+.fgUnknown,
+.lv-unknown {
+  color: var(--color-status-unknown-fg);
+}
+
+/* ───── ScanCounts (11.3) ───── */
+.counts {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  column-gap: var(--spacing-1-5);
+  row-gap: var(--spacing-0-5);
+  min-width: 0;
+  font-variant-numeric: var(--font-numeric);
+}
+
+.counts-sm {
+  font: var(--font-caption);
+}
+
+.counts-md {
+  font: var(--font-metric-sm);
+  column-gap: var(--spacing-3);
+}
+
+.countsStacked {
+  flex-direction: column;
+  align-items: flex-start;
+  row-gap: var(--spacing-1);
+}
+
+.countsPart {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  white-space: nowrap;
+}
+
+.counts-md .countsPart {
+  gap: var(--spacing-1-5);
+}
+
+.countsPart > svg {
+  flex-shrink: 0;
+}
+
+.counts-sm .countsStrong {
+  font: var(--font-caption-strong);
+}
+
+.countsSep {
+  color: var(--color-text-tertiary);
+}
+
+.countsSecondary {
+  color: var(--color-text-secondary);
+}
+
+.countsMuted {
+  color: var(--color-text-tertiary);
+}
+
+.counts-md .countsSecondary,
+.counts-md .countsMuted {
+  font: var(--font-body);
+}
+
+.countsNone {
+  white-space: normal;
+}
+
+/* stale: 숫자만 valueText, 아이콘·문구 색 유지 */
+.countsStale .countsNum {
+  color: var(--color-status-stale-value-text);
+}
+
+/* ───── ScanFindingList (11.2) ───── */
+.findings {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.findingList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.findingList:focus-visible {
+  outline-offset: calc(-1 * var(--size-focus-ring-width));
+}
+
+.findingLi + .findingLi {
+  border-top: var(--border-width-thin) solid var(--color-border-subtle);
+}
+
+.finding {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  width: 100%;
+  min-width: 0;
+  min-height: calc(var(--spacing-12) + var(--spacing-1));
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+  font: inherit;
+}
+
+.findingButton {
+  cursor: pointer;
+}
+
+.findingButton:hover {
+  background: var(--color-bg-hover);
+}
+
+/* focus: shadow.focus 안쪽 */
+.findingButton:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 var(--size-focus-ring-width) var(--color-border-focus);
+}
+
+.findingSelected,
+.findingSelected:hover {
+  background: var(--color-bg-selected);
+  box-shadow: inset var(--border-width-accent) 0 0 var(--color-accent-default);
+}
+
+.findingSelected:focus-visible {
+  box-shadow:
+    inset var(--border-width-accent) 0 0 var(--color-accent-default),
+    inset 0 0 0 var(--size-focus-ring-width) var(--color-border-focus);
+}
+
+.findingBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.findingRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.findingRow > svg {
+  flex-shrink: 0;
+}
+
+/* 아이콘 14px + 4px 뒤 등급 문구 */
+.findingLevel {
+  margin-left: calc(var(--spacing-1) - var(--spacing-2));
+  font: var(--font-caption-strong);
+  white-space: nowrap;
+}
+
+.findingLoc {
+  flex-shrink: 1;
+  min-width: 0;
+  font: var(--font-resource-name);
+  color: var(--color-text-primary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 2줄: 아이콘 14px + 4px 만큼 들여쓰기 */
+.findingIndent {
+  padding-left: calc(var(--size-icon-sm) + var(--spacing-1));
+  gap: var(--spacing-1-5);
+}
+
+.ruleId {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: calc(var(--spacing-4) + var(--spacing-0-5));
+  padding: 0 var(--spacing-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface-sunken);
+  font: var(--font-micro);
+  font-family: var(--font-family-mono);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.findingDescWrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+}
+
+.findingDesc {
+  display: block;
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.findingExtra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.findingHint {
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.findingAction {
+  display: inline-flex;
+}
+
+.findingMore {
+  padding: var(--spacing-1) var(--spacing-3);
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+/* compact: 32px 한 줄 */
+.findingsCompact .finding {
+  min-height: var(--spacing-8);
+  padding: var(--spacing-1) var(--spacing-3);
+  justify-content: center;
+}
+
+.findingsCompact .findingRow {
+  gap: var(--spacing-1-5);
+}
+
+/* ───── CodeEditor (11.1, aws-snapshot-manager.md 5.2) ───── */
+.editor {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: calc(var(--spacing-16) * 2);
+  background: var(--color-code-bg);
+  color: var(--color-code-fg);
+  overflow: hidden;
+}
+
+/* focus: 코드 영역 안쪽 2px border.focus (Card 바깥 shadow 아님) */
+.editor::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border: var(--size-focus-ring-width) solid transparent;
+  pointer-events: none;
+}
+
+.editor:focus-within::after {
+  border-color: var(--color-border-focus);
+}
+
+.editorLoading {
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-2) 0;
+}
+
+.editorSkeletonRow {
+  display: flex;
+  align-items: center;
+  height: var(--spacing-5);
+  padding: 0 var(--spacing-4) 0 calc(var(--spacing-16) + var(--spacing-3));
+}
+
+.ceScroll {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.ceScroll:focus,
+.ceScroll:focus-visible {
+  outline: none;
+}
+
+.ceMeasure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  white-space: pre;
+  font: var(--font-code);
+  pointer-events: none;
+}
+
+.ceInner {
+  position: relative;
+  width: max-content;
+}
+
+.ceWrap .ceInner {
+  width: auto;
+}
+
+.ceRow {
+  display: flex;
+  align-items: stretch;
+  min-height: var(--spacing-5);
+}
+
+.ceGutter {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  flex: 0 0 var(--ce-gutter-w);
+  width: var(--ce-gutter-w);
+  padding-right: var(--spacing-2);
+  background: var(--color-code-header-bg);
+  box-shadow: inset calc(-1 * var(--border-width-thin)) 0 0 var(--color-code-border);
+}
+
+.ceMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 var(--spacing-5);
+  height: var(--spacing-5);
+}
+
+.ceMark > span {
+  display: inline-flex;
+}
+
+.ceNum {
+  flex: 0 0 var(--ce-num-w);
+  height: var(--spacing-5);
+  font: var(--font-resource-name);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--color-text-secondary);
+  text-align: right;
+  user-select: none;
+}
+
+.ceText {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 var(--spacing-4) 0 var(--spacing-3);
+  font: var(--font-code);
+  white-space: pre;
+}
+
+.ceWrap .ceText {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ceText::selection,
+.ceTextarea::selection {
+  background: var(--color-accent-subtle-border);
+}
+
+.ceRow-crit > .ceText {
+  background: var(--color-status-crit-bg);
+}
+
+.ceRow-warn > .ceText {
+  background: var(--color-status-warn-bg);
+}
+
+.ceRowHighlight > .ceText {
+  background: var(--color-status-crit-bg);
+}
+
+.ceRowTarget > .ceText {
+  box-shadow: inset var(--border-width-accent) 0 0 var(--color-accent-default);
+}
+
+.ceRowTarget .ceNum {
+  font-weight: var(--font-caption-strong-weight);
+  color: var(--color-accent-default);
+}
+
+.ceIcon-crit {
+  color: var(--color-status-crit-fg);
+}
+
+.ceIcon-warn {
+  color: var(--color-status-warn-fg);
+}
+
+.ceIcon-unknown {
+  color: var(--color-status-unknown-fg);
+}
+
+.ceTip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-0-5);
+}
+
+/* 편집: 본문 칸 위에 투명 textarea (gutter 는 z-index 2 로 위) */
+.ceTextarea {
+  position: absolute;
+  top: 0;
+  left: var(--ce-gutter-w);
+  z-index: 1;
+  width: calc(100% - var(--ce-gutter-w));
+  margin: 0;
+  padding: var(--spacing-2) var(--spacing-4) var(--spacing-2) var(--spacing-3);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-code-fg);
+  caret-color: var(--color-code-fg);
+  font: var(--font-code);
+  white-space: pre;
+  resize: none;
+  overflow: hidden;
+  tab-size: 2;
+}
+
+.ceTextarea:focus,
+.ceTextarea:focus-visible {
+  outline: none;
+}
+
+.ceTextarea[readonly] {
+  cursor: default;
+}
+
+.editorLocked .ceScroll {
+  cursor: progress;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ceScroll {
+    scroll-behavior: auto;
+  }
+}
+
+/* ───── ScanFindingList truncateFile (components.md 15.3): 가운데 말줄임, 뒤쪽 `파일 이름:줄` 보존 ───── */
+.findingLocTip {
+  display: inline-flex;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.findingLocMiddle {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: clip;
+}
+
+.findingLocHead {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.findingLocTail {
+  flex-shrink: 0;
+  white-space: nowrap;
+}

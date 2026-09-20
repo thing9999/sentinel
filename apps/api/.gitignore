@@ -1,0 +1,6 @@
+node_modules
+dist
+coverage
+.env
+# prisma generate 결과물 (postinstall에서 생성)
+src/database/generated

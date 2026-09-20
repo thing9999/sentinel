@@ -1,0 +1,136 @@
+{
+  "cloudformation.yml": [
+    {
+      "file": "cloudformation.yml",
+      "line": 6,
+      "rule": "env-block",
+      "severity": "error",
+      "message": "환경 변수 블록입니다. 값에 비밀이 없는지 확인하고, 없으면 줄 끝에 \"# snapshot-scan: allow\""
+    },
+    {
+      "file": "cloudformation.yml",
+      "line": 7,
+      "rule": "env-block",
+      "severity": "error",
+      "message": "환경 변수 블록입니다. 값에 비밀이 없는지 확인하고, 없으면 줄 끝에 \"# snapshot-scan: allow\""
+    },
+    {
+      "file": "cloudformation.yml",
+      "line": 8,
+      "rule": "secret-key-value",
+      "severity": "error",
+      "message": "비밀값으로 보이는 키 \"DB_PASSWORD\" 에 값이 들어 있습니다 (S3****(15자))"
+    },
+    {
+      "file": "cloudformation.yml",
+      "line": 11,
+      "rule": "user-data",
+      "severity": "warn",
+      "message": "UserData(부트스트랩 스크립트)입니다. 비밀값이 섞여 있지 않은지 확인하세요"
+    },
+    {
+      "file": "cloudformation.yml",
+      "line": 17,
+      "rule": "url-credentials",
+      "severity": "error",
+      "message": "URL 안에 사용자:비밀번호가 들어 있습니다 (연결 문자열)"
+    },
+    {
+      "file": "cloudformation.yml",
+      "line": 18,
+      "rule": "kubeconfig-ca",
+      "severity": "warn",
+      "message": "클러스터 CA 데이터입니다 (비밀은 아니지만 EKS 가 관리하는 값이라 템플릿에서 빼는 것이 좋습니다)"
+    },
+    {
+      "file": "cloudformation.yml",
+      "line": 24,
+      "rule": "env-block",
+      "severity": "error",
+      "message": "환경 변수 블록입니다. 값에 비밀이 없는지 확인하고, 없으면 줄 끝에 \"# snapshot-scan: allow\""
+    },
+    {
+      "file": "cloudformation.yml",
+      "line": 31,
+      "rule": "vendor-token",
+      "severity": "error",
+      "message": "서비스 토큰 패턴 (GitHub/Slack/OpenAI/GitLab 등)"
+    }
+  ],
+  "k8s-like.yaml": [
+    {
+      "file": "k8s-like.yaml",
+      "line": 24,
+      "rule": "secret-key-value",
+      "severity": "error",
+      "message": "비밀값으로 보이는 키 \"password\" 에 값이 들어 있습니다 (ex****(14자))"
+    },
+    {
+      "file": "k8s-like.yaml",
+      "line": 30,
+      "rule": "secret-key-value",
+      "severity": "error",
+      "message": "비밀값으로 보이는 키 \"API_TOKEN\" 에 값이 들어 있습니다 (re****(16자))"
+    }
+  ],
+  "sample.json": [
+    {
+      "file": "sample.json",
+      "line": 2,
+      "rule": "env-block",
+      "severity": "error",
+      "message": "환경 변수 블록입니다. 값에 비밀이 없는지 확인하고, 없으면 줄 끝에 \"# snapshot-scan: allow\""
+    },
+    {
+      "file": "sample.json",
+      "line": 5,
+      "rule": "secret-key-value",
+      "severity": "error",
+      "message": "비밀값으로 보이는 키 \"AuthToken\" 에 값이 들어 있습니다 (ab****(12자))"
+    },
+    {
+      "file": "sample.json",
+      "line": 7,
+      "rule": "jwt",
+      "severity": "error",
+      "message": "JWT 토큰 패턴"
+    }
+  ],
+  "terraform.tf": [
+    {
+      "file": "terraform.tf",
+      "line": 2,
+      "rule": "env-block",
+      "severity": "error",
+      "message": "환경 변수 블록입니다. 값에 비밀이 없는지 확인하고, 없으면 줄 끝에 \"# snapshot-scan: allow\""
+    },
+    {
+      "file": "terraform.tf",
+      "line": 3,
+      "rule": "env-block",
+      "severity": "error",
+      "message": "환경 변수 블록입니다. 값에 비밀이 없는지 확인하고, 없으면 줄 끝에 \"# snapshot-scan: allow\""
+    },
+    {
+      "file": "terraform.tf",
+      "line": 4,
+      "rule": "secret-key-value",
+      "severity": "error",
+      "message": "비밀값으로 보이는 키 \"DB_PASSWORD\" 에 값이 들어 있습니다 (S3****(15자))"
+    },
+    {
+      "file": "terraform.tf",
+      "line": 8,
+      "rule": "user-data",
+      "severity": "warn",
+      "message": "UserData(부트스트랩 스크립트)입니다. 비밀값이 섞여 있지 않은지 확인하세요"
+    },
+    {
+      "file": "terraform.tf",
+      "line": 15,
+      "rule": "secret-key-value",
+      "severity": "error",
+      "message": "비밀값으로 보이는 키 \"master_password\" 에 값이 들어 있습니다 (hu****(14자))"
+    }
+  ]
+}

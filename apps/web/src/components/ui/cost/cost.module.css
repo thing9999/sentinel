@@ -1,0 +1,405 @@
+/* components.md 3절 금액 / status.md 3절 */
+
+/* ───── CostKindBadge ───── */
+.kindBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  flex-shrink: 0;
+  max-width: 100%;
+  height: var(--size-badge-sm);
+  padding: 0 var(--spacing-1-5);
+  border: var(--border-width-thin) var(--border-style-confirmed) var(--kind-border);
+  border-radius: var(--radius-sm);
+  background: var(--kind-bg);
+  color: var(--kind-fg);
+  font: var(--font-micro);
+  letter-spacing: var(--font-micro-letter-spacing);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.kindText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kind-estimate,
+.kind-llmEstimate {
+  --kind-fg: var(--color-cost-estimate-fg);
+  --kind-bg: var(--color-cost-estimate-bg);
+  --kind-border: var(--color-cost-estimate-border);
+  border-style: var(--border-style-estimate);
+}
+
+.kind-confirmed {
+  --kind-fg: var(--color-cost-confirmed-fg);
+  --kind-bg: var(--color-cost-confirmed-bg);
+  --kind-border: var(--color-cost-confirmed-border);
+}
+
+.kind-forecast {
+  --kind-fg: var(--color-cost-forecast-fg);
+  --kind-bg: var(--color-cost-forecast-bg);
+  --kind-border: var(--color-cost-forecast-border);
+}
+
+/* ───── MoneyValue ───── */
+.money {
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  font-variant-numeric: var(--font-numeric);
+}
+
+.moneyMain {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--spacing-2);
+  row-gap: var(--spacing-0-5);
+  min-width: 0;
+}
+
+.moneyTip {
+  min-width: 0;
+}
+
+.moneyNumber {
+  color: var(--money-color, var(--color-text-primary));
+  white-space: nowrap;
+  font-style: normal;
+}
+
+.moneyStale {
+  --money-color: var(--color-status-stale-value-text);
+}
+
+.approx {
+  color: var(--color-cost-estimate-fg);
+}
+
+.money-sm .moneyNumber {
+  font: var(--font-table);
+  font-variant-numeric: var(--font-numeric);
+}
+
+.money-md .moneyNumber {
+  font: var(--font-metric-sm);
+  font-variant-numeric: var(--font-numeric);
+}
+
+.money-lg .moneyNumber {
+  font: var(--font-metric-md);
+  letter-spacing: var(--font-metric-md-letter-spacing);
+  font-variant-numeric: var(--font-numeric);
+}
+
+.money-xl .moneyNumber {
+  font: var(--font-metric-lg);
+  letter-spacing: var(--font-metric-lg-letter-spacing);
+  font-variant-numeric: var(--font-numeric);
+}
+
+.moneyAside {
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+.moneyRange,
+.rangeValue {
+  font: var(--font-caption);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--color-text-secondary);
+}
+
+.rangeKind-forecast {
+  color: var(--color-cost-forecast-fg);
+}
+
+/* ───── MetricTile ───── */
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-height: 136px;
+  min-width: 0;
+  padding: var(--spacing-4);
+  border: var(--border-width-thin) solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.tile-estimate,
+.tile-llmEstimate {
+  border-style: var(--border-style-estimate);
+  border-color: var(--color-cost-estimate-border);
+}
+
+.tile-forecast {
+  border-color: var(--color-cost-forecast-border);
+}
+
+/* aws-cost.md 3절: stale 이면 테두리 색만 stale.border (estimate 의 dashed 는 유지) */
+.tileStale {
+  border-color: var(--color-status-stale-border);
+  --money-color: var(--color-status-stale-value-text);
+}
+
+.tileStale:not(.tile-estimate):not(.tile-llmEstimate) {
+  border-style: var(--border-style-stale);
+}
+
+.tileStale .tileValue {
+  color: var(--color-status-stale-value-text);
+}
+
+.tileBar-warn {
+  box-shadow:
+    inset var(--border-width-accent) 0 0 var(--color-status-warn-solid),
+    var(--shadow-xs);
+}
+
+.tileBar-crit {
+  box-shadow:
+    inset var(--border-width-accent) 0 0 var(--color-status-crit-solid),
+    var(--shadow-xs);
+}
+
+.tileInteractive:hover {
+  border-color: var(--color-border-default);
+  box-shadow: var(--shadow-sm);
+}
+
+.tileHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.tileLabel {
+  min-width: 0;
+  font: var(--font-caption-strong);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.tileLink {
+  text-decoration: none;
+}
+
+.tileLink::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.tileLink:focus-visible {
+  outline: none;
+}
+
+.tileLink:focus-visible::after {
+  outline: var(--size-focus-ring-width) solid var(--color-border-focus);
+  outline-offset: calc(-1 * var(--size-focus-ring-width));
+}
+
+.tileBadges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--spacing-1);
+  flex-shrink: 0;
+  max-width: 60%;
+}
+
+.tileValue {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font: var(--font-metric-lg);
+  letter-spacing: var(--font-metric-lg-letter-spacing);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--color-text-primary);
+}
+
+.tileUnknownValue {
+  color: var(--color-text-tertiary);
+}
+
+.tileUnknownReason {
+  font: var(--font-caption);
+  color: var(--color-status-unknown-fg);
+}
+
+.tileLines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-0-5);
+  min-width: 0;
+}
+
+.tileLine {
+  font: var(--font-caption);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.tileFooter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-1);
+  margin-top: auto;
+  padding-top: var(--spacing-1);
+  position: relative;
+  z-index: 1;
+}
+
+/* ───── BudgetGauge ───── */
+.gauge {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  width: 100%;
+  min-width: 0;
+}
+
+/* 게이지 영역 32px = 위 여백(구간선) + 막대 8px + 라벨 14px */
+.gaugeArea {
+  position: relative;
+  height: var(--spacing-8);
+  padding-top: var(--spacing-1);
+}
+
+.gaugeTrack {
+  position: relative;
+  display: block;
+  height: var(--spacing-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface-sunken);
+  overflow: hidden;
+}
+
+.gaugeConfirmed {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--color-cost-confirmed-solid);
+}
+
+.gaugeProjected {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  --hatch: var(--color-cost-forecast-solid);
+  background:
+    repeating-linear-gradient(
+      45deg,
+      var(--hatch) 0 var(--chart-hatch-line-width),
+      transparent var(--chart-hatch-line-width) calc(var(--chart-hatch-line-width) + var(--chart-hatch-gap))
+    ),
+    var(--color-cost-forecast-band);
+}
+
+.gaugeProjectedEstimate {
+  --hatch: var(--color-cost-estimate-solid);
+  background:
+    repeating-linear-gradient(
+      45deg,
+      var(--hatch) 0 var(--chart-hatch-line-width),
+      transparent var(--chart-hatch-line-width) calc(var(--chart-hatch-line-width) + var(--chart-hatch-gap))
+    ),
+    var(--color-cost-estimate-bg);
+}
+
+/* 예측 구간 하한~상한: 막대 위 2px 가로선 */
+.gaugeRange {
+  position: absolute;
+  top: 0;
+  height: var(--border-width-thick);
+  background: var(--color-cost-forecast-solid);
+}
+
+/* 표시선: 2px × 14px */
+.gaugeMark {
+  position: absolute;
+  top: var(--spacing-0-5);
+  width: var(--border-width-thick);
+  height: var(--size-icon-sm);
+  transform: translateX(-50%);
+}
+
+.gaugeMarkWarn {
+  background: var(--color-cost-budget-warn-line);
+}
+
+.gaugeMarkBudget {
+  background: var(--color-cost-budget-line);
+}
+
+.gaugeMarkLabel {
+  position: absolute;
+  top: calc(100% + var(--spacing-0-5));
+  left: 0;
+  font: var(--font-micro);
+  letter-spacing: var(--font-micro-letter-spacing);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* 90% 라벨은 선 왼쪽으로(예산 라벨과 겹치지 않게) */
+.gaugeMarkLabelEnd {
+  left: auto;
+  right: var(--spacing-1);
+}
+
+.gaugeLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-3);
+  margin-top: var(--spacing-2);
+  font: var(--font-micro);
+  color: var(--color-text-secondary);
+}
+
+.gaugeLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.gaugeSwatch {
+  width: var(--spacing-2);
+  height: var(--spacing-2);
+  border-radius: var(--radius-xs);
+}
+
+.gaugeSwatchConfirmed {
+  background: var(--color-cost-confirmed-solid);
+}
+
+.gaugeSwatchProjected {
+  --hatch: var(--color-cost-forecast-solid);
+  background:
+    repeating-linear-gradient(
+      45deg,
+      var(--hatch) 0 var(--chart-hatch-line-width),
+      transparent var(--chart-hatch-line-width) calc(var(--chart-hatch-line-width) + var(--chart-hatch-gap))
+    ),
+    var(--color-cost-forecast-band);
+}
+
+.gaugeSummary {
+  font: var(--font-caption);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--color-text-secondary);
+}

@@ -1,0 +1,794 @@
+/*
+ * k8s-snapshot 전용 표현 컴포넌트 (components.md 14절, k8s-snapshot.md 5·6절, status.md 10절)
+ * 색·간격·글자는 tokens.css 변수만 쓴다. 새 토큰 없음(status.md 10.6).
+ * 드리프트 구분(추가·삭제·변경)은 빨강·초록을 쓰지 않는다: 모두 text.secondary + 사각 아이콘 모양 + 문구.
+ */
+
+/* ───── 공통 ───── */
+.mono {
+  font-family: var(--font-family-mono);
+}
+
+.fgTertiary {
+  color: var(--color-text-tertiary);
+}
+
+.fgSecondary {
+  color: var(--color-text-secondary);
+}
+
+.fgWarn,
+.fg-warn {
+  color: var(--color-status-warn-fg);
+}
+
+.fg-crit {
+  color: var(--color-status-crit-fg);
+}
+
+.fg-unknown {
+  color: var(--color-status-unknown-fg);
+}
+
+.tipLine {
+  display: block;
+}
+
+.captionTertiary {
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+.chevron {
+  flex-shrink: 0;
+  transition: transform var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}
+
+.linkButton {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-link);
+  font: var(--font-caption);
+  cursor: pointer;
+}
+
+.linkButton:hover {
+  color: var(--color-text-link-hover);
+  text-decoration: underline;
+}
+
+/* ───── DriftStatus (14.3): 계산 안 함 / 계산 중 (배지 아님) ───── */
+/* refreshing: 배지 뒤 4px 스피너 */
+.driftWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.driftPlain {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  font: var(--font-caption);
+  white-space: nowrap;
+}
+
+/* ───── DriftKindIcon / DriftKindChip (14.3) ───── */
+.driftKindIcon {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+}
+
+.kindChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  flex-shrink: 0;
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface-sunken);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  text-decoration: none;
+  vertical-align: middle;
+  font-variant-numeric: var(--font-numeric);
+}
+
+.kindChip-sm {
+  height: var(--size-badge-sm);
+  padding: 0 var(--spacing-1-5);
+  font: var(--font-micro);
+  font-weight: var(--font-body-weight);
+}
+
+.kindChip-md {
+  height: var(--size-badge-md);
+  padding: 0 var(--spacing-2);
+  font: var(--font-caption-strong);
+}
+
+.kindChipIcon {
+  flex-shrink: 0;
+}
+
+.kindChipLink:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+
+/* ───── MaskedValue (14.8) ───── */
+.maskedAnchor {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.masked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  box-sizing: border-box;
+  min-height: calc(var(--size-badge-sm) + var(--spacing-0-5));
+  max-width: 100%;
+  padding: 0 var(--spacing-1-5);
+  border: var(--border-width-thin) dashed var(--color-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface-sunken);
+}
+
+.maskedText {
+  min-width: 0;
+  font: var(--font-resource-name);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* ───── DiffValue (14.7) ───── */
+.diffValue {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.diffText {
+  font: var(--font-resource-name);
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diffScalar {
+  display: inline;
+  min-width: 0;
+}
+
+/* 스칼라 null 값 (값 없음 `(없음)`과 다름) */
+.diffNull {
+  color: var(--color-text-tertiary);
+}
+
+/* showType: 값 뒤 6px micro tertiary `문자열`/`숫자`/`불리언` */
+.diffType {
+  margin-left: var(--spacing-1-5);
+  font: var(--font-micro);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.diffList {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.diffListItem {
+  display: flex;
+  min-width: 0;
+}
+
+.diffBullet {
+  flex-shrink: 0;
+  font: var(--font-resource-name);
+  color: var(--color-text-tertiary);
+  white-space: pre;
+}
+
+.diffAbsent {
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+/* ───── FieldDiffTable (14.6) ───── */
+.fdWrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.fdNote {
+  margin: 0;
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+/* 넓은 표는 표 안에서만 가로 스크롤 */
+.fdScroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.fdTable {
+  width: 100%;
+  min-width: calc(200px + 2 * 176px + var(--spacing-6) + 128px);
+  border-collapse: collapse;
+  table-layout: fixed;
+  font: var(--font-table);
+}
+
+.fdColPath {
+  width: auto;
+}
+
+.fdColValue {
+  width: 176px;
+}
+
+.fdColArrow {
+  width: var(--spacing-6);
+}
+
+.fdColCls {
+  width: 128px;
+}
+
+@media (max-width: 1279px) {
+  .fdTable {
+    min-width: calc(200px + 2 * 144px + var(--spacing-6) + 128px);
+  }
+
+  .fdColValue {
+    width: 144px;
+  }
+}
+
+.fdTable thead th,
+.fdTable thead td {
+  height: var(--size-table-header);
+  padding: 0 var(--spacing-3);
+  background: var(--color-bg-surface-sunken);
+  color: var(--color-text-secondary);
+  font: var(--font-caption-strong);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.fdRow > th,
+.fdRow > td {
+  padding: calc(var(--spacing-2) + var(--spacing-0-5)) var(--spacing-3);
+  border-top: var(--border-width-thin) solid var(--color-border-subtle);
+  vertical-align: top;
+  text-align: left;
+}
+
+.fdRow {
+  min-height: var(--spacing-10);
+}
+
+.fdPath {
+  font: var(--font-resource-name);
+  font-weight: var(--font-body-weight);
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.fdValue {
+  min-width: 0;
+}
+
+.fdArrow {
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font: var(--font-caption);
+}
+
+.fdRow > .fdArrow {
+  padding-left: 0;
+  padding-right: 0;
+  text-align: center;
+}
+
+.fdCls {
+  min-width: 0;
+}
+
+.fdClsText {
+  display: block;
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+.fdClsDetail {
+  display: block;
+  margin-top: var(--spacing-1);
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+/* 숨긴 차이 행: 배경 sunken, 필드·값 글자 text.secondary */
+.fdRowHidden > th,
+.fdRowHidden > td {
+  background: var(--color-bg-surface-sunken);
+}
+
+.fdRowHidden .fdPath,
+.fdRowHidden .diffText {
+  color: var(--color-text-secondary);
+}
+
+.fdGroupRow > td {
+  height: var(--size-table-header);
+  padding: 0 var(--spacing-3);
+  border-top: var(--border-width-thin) solid var(--color-border-subtle);
+  background: var(--color-bg-surface-sunken);
+}
+
+.fdGroup {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-1);
+  min-height: var(--size-table-header);
+  font: var(--font-table);
+  color: var(--color-text-primary);
+}
+
+.fdGroupButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.fdGroupButton:hover {
+  color: var(--color-text-link);
+}
+
+.fdGroupDetail {
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+/* fieldsTruncated 안내 행 (36px, sunken, caption) */
+.fdTruncRow > td {
+  height: var(--size-table-header);
+  padding: 0 var(--spacing-3);
+  border-top: var(--border-width-thin) solid var(--color-border-subtle);
+  background: var(--color-bg-surface-sunken);
+}
+
+.fdTrunc {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+.fdExpandRow > td {
+  padding: 0;
+}
+
+.fdExpand {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--spacing-4);
+  padding: var(--spacing-3) var(--spacing-4);
+  background: var(--color-bg-surface-sunken);
+}
+
+.fdExpandCol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.fdExpandLabel {
+  font: var(--font-caption-strong);
+  color: var(--color-text-secondary);
+}
+
+/* ───── DriftSummary (14.5) ───── */
+.summary {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--spacing-5);
+  border: var(--border-width-thin) solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-xs);
+}
+
+/* 지난 결과 보기 (k8s-snapshot.md 6.8) */
+.summaryLast {
+  border-style: dashed;
+  border-color: var(--color-border-strong);
+}
+
+.summaryStale {
+  border-style: dashed;
+  border-color: var(--color-status-stale-border);
+}
+
+.sumRow {
+  min-width: 0;
+}
+
+.sumRow + .sumRow {
+  margin-top: var(--spacing-4);
+  padding-top: var(--spacing-4);
+  border-top: var(--border-width-thin) solid var(--color-border-subtle);
+}
+
+.sumHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.sumStatus {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.sumMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--spacing-1);
+  min-width: 0;
+  margin-left: auto;
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+  text-align: right;
+}
+
+.sumMetaLine {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--spacing-1) var(--spacing-2);
+  font-variant-numeric: var(--font-numeric);
+}
+
+.sumMetaLine .mono {
+  font: var(--font-resource-name);
+}
+
+.sumCells {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--spacing-0-5);
+  flex: 1 1 0;
+  min-width: 120px;
+  min-height: calc(var(--spacing-12) + var(--spacing-2));
+  padding: 0 var(--spacing-4);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+@media (max-width: 1279px) {
+  .cell {
+    min-width: 96px;
+  }
+}
+
+/* 칸 사이 1px 세로선 (높이 40px) */
+.cell + .cell::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: var(--spacing-10);
+  border-left: var(--border-width-thin) solid var(--color-border-subtle);
+  transform: translateY(-50%);
+}
+
+.cellButton {
+  cursor: pointer;
+}
+
+.cellButton:hover {
+  background: var(--color-bg-hover);
+}
+
+.cellButton[aria-pressed="true"] {
+  background: var(--color-bg-selected);
+  box-shadow: inset 0 calc(-1 * var(--border-width-thick)) 0 var(--color-accent-default);
+}
+
+.cellLabel {
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+.cellValue {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1-5);
+  font: var(--font-metric-md);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--color-text-primary);
+}
+
+.cellValue.fgTertiary {
+  color: var(--color-text-tertiary);
+}
+
+.summaryStale .cellValue {
+  color: var(--color-status-stale-value-text);
+}
+
+.sumHidden {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2) var(--spacing-4);
+}
+
+.sumHiddenText {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-1-5);
+  font: var(--font-body);
+  color: var(--color-text-primary);
+}
+
+.sumNc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.ncLabel {
+  font: var(--font-caption-strong);
+  color: var(--color-text-secondary);
+}
+
+.ncList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-1-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sumNotices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+/* ───── ResourceTree (14.4) ───── */
+.tree {
+  position: relative;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/* 빈 결과: EmptyState sm, 높이 160px (k8s-snapshot.md 5.2) */
+.treeEmpty {
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+.treeInner {
+  position: relative;
+  min-width: 100%;
+}
+
+.treeSkeletonRow {
+  display: flex;
+  align-items: center;
+  height: calc(var(--spacing-6) + var(--spacing-1));
+  padding: 0 var(--spacing-2);
+}
+
+.treeRow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: calc(var(--spacing-6) + var(--spacing-1));
+  padding-right: var(--spacing-2);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.treeRow:hover {
+  background: var(--color-bg-hover);
+}
+
+.treeRow:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 var(--size-focus-ring-width) var(--color-border-focus);
+}
+
+.treeRowSelected,
+.treeRowSelected:hover {
+  background: var(--color-bg-selected);
+  box-shadow: inset var(--border-width-accent) 0 0 var(--color-accent-default);
+}
+
+.treeRowSelected:focus-visible {
+  box-shadow:
+    inset var(--border-width-accent) 0 0 var(--color-accent-default),
+    inset 0 0 0 var(--size-focus-ring-width) var(--color-border-focus);
+}
+
+.treeRowDisabled {
+  color: var(--color-text-disabled);
+  cursor: default;
+}
+
+.treeRowDisabled .treeName {
+  color: var(--color-text-disabled);
+}
+
+.treeChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--spacing-4);
+  color: var(--color-text-tertiary);
+}
+
+.treeIcon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-right: var(--spacing-1-5);
+}
+
+.treeMain {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1-5);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.treeNameTip {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.treeName {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  font: var(--font-table);
+  white-space: nowrap;
+}
+
+.treeName.mono {
+  font: var(--font-resource-name);
+}
+
+.treeNameNs {
+  font-weight: var(--font-body-strong-weight);
+}
+
+.treeName.mono.treeNameNs {
+  font-weight: var(--font-body-strong-weight);
+}
+
+.treeNameHead {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.treeNameTail {
+  flex-shrink: 0;
+}
+
+.treeChips {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  flex-shrink: 0;
+}
+
+.treeMarkers {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  flex-shrink: 0;
+  margin-left: var(--spacing-2);
+}
+
+.treeMarkerTip {
+  display: inline-flex;
+}
+
+.treeScan {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-0-5);
+  font: var(--font-caption-strong);
+  font-variant-numeric: var(--font-numeric);
+}
+
+.treeDirty {
+  width: var(--spacing-2);
+  height: var(--spacing-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-default);
+}
+
+.treeSecondary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-0-5);
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.treeCount {
+  font: var(--font-caption);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--color-text-tertiary);
+}

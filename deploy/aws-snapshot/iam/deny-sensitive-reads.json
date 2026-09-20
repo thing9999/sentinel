@@ -1,0 +1,40 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyReadingSecretValuesAndData",
+      "Effect": "Deny",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:BatchGetSecretValue",
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath",
+        "ssm:GetParameterHistory",
+        "kms:Decrypt",
+        "ec2:GetPasswordData",
+        "gamelift:RequestUploadCredentials",
+        "gamelift:GetInstanceAccess",
+        "gamelift:GetComputeAccess",
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "dynamodb:GetItem",
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "cognito-idp:AdminGetUser",
+        "cognito-idp:ListUsers",
+        "logs:GetLogEvents",
+        "logs:FilterLogEvents",
+        "logs:StartQuery",
+        "logs:GetQueryResults",
+        "athena:GetQueryResults",
+        "codecommit:GitPull"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

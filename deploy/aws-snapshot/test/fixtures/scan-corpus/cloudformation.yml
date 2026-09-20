@@ -1,0 +1,31 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Fn:
+    Type: AWS::Lambda::Function
+    Properties:
+      Environment:
+        Variables:
+          DB_PASSWORD: S3cretPassw0rd!
+          API_TOKEN: !Ref TokenParam
+          LOG_LEVEL: info
+      UserData: IyEvYmluL2Jhc2g=
+  Db:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      MasterUserPassword: "{{resolve:secretsmanager:db}}"
+      MasterUsername: admin
+      Endpoint: postgres://app:hunter2@db.internal:5432/app
+      CertificateAuthorityData: abc
+  Task:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: app
+          Environment:
+            - Name: SECRET_KEY
+              Value: plain-secret-value
+          Secrets:
+            - Name: DB_PASSWORD
+              ValueFrom: arn:aws:ssm:us-east-1:123456789012:parameter/db
+  Key: AKIAIOSFODNN7EXAMPLE # snapshot-scan: allow
+  Tok: ghp_abcdefghijklmnopqrstuvwxyz0123456789

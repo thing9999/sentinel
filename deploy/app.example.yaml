@@ -1,0 +1,160 @@
+# 예시: 클러스터 안에 api·web을 배포할 때 (선택. 기본 운영은 로컬 docker compose — 명세 가정 A5)
+# - 인증이 없는 대시보드이므로 외부에 노출하지 말 것 (Service는 ClusterIP, kubectl port-forward로 접속)
+# - 이미지는 직접 빌드해서 레지스트리에 올린 뒤 <registry>를 바꾼다
+# - 비밀값(DATABASE_URL, MONITOR_DB_URL)은 Secret으로 따로 만든다 (이 파일에 넣지 않는다):
+#     kubectl -n sentinel create secret generic sentinel-api \
+#       --from-literal=DATABASE_URL='postgres://...' \
+#       --from-literal=MONITOR_DB_URL='postgres://sentinel_monitor:...@postgres.data.svc:5432/postgres?application_name=sentinel-monitor'
+#   (api 자신은 secrets를 조회하지 않는다. 쿠버네티스가 환경 변수로 주입할 뿐)
+# - 어드바이저 브리지(apps/agent-bridge)는 호스트의 Claude Code 로그인을 쓰므로 클러스터 안에서는 동작하지 않는다
+#
+# 적용: kubectl apply -f deploy/rbac.yaml -f deploy/app.example.yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentinel-api
+  namespace: sentinel
+  labels:
+    app.kubernetes.io/name: sentinel-api
+    app.kubernetes.io/part-of: sentinel
+spec:
+  replicas: 1 # informer 캐시·SSE가 프로세스 메모리에 있으므로 1개
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sentinel-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sentinel-api
+        app.kubernetes.io/part-of: sentinel
+    spec:
+      serviceAccountName: sentinel-api
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: <registry>/sentinel-api:latest
+          ports:
+            - name: http
+              containerPort: 3001
+          env:
+            - name: DATA_SOURCE
+              value: live
+            - name: PORT
+              value: "3001"
+            - name: CORS_ORIGIN
+              value: http://localhost:3000
+            - name: EKS_CLUSTER_NAME
+              value: prod-eks
+            - name: AWS_REGION
+              value: ap-northeast-2
+            - name: DB_TARGET_NAMESPACE
+              value: data
+            - name: DB_TARGET_STATEFULSET
+              value: postgres
+          envFrom:
+            - secretRef:
+                name: sentinel-api
+                optional: true
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentinel-api
+  namespace: sentinel
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: sentinel-api
+  ports:
+    - name: http
+      port: 3001
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentinel-web
+  namespace: sentinel
+  labels:
+    app.kubernetes.io/name: sentinel-web
+    app.kubernetes.io/part-of: sentinel
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sentinel-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sentinel-web
+        app.kubernetes.io/part-of: sentinel
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: <registry>/sentinel-web:latest
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            # 브라우저가 호출할 주소 (port-forward 기준). NEXT_PUBLIC_*은 빌드 시 고정될 수 있음
+            - name: NEXT_PUBLIC_API_URL
+              value: http://localhost:3001
+            - name: API_INTERNAL_URL
+              value: http://sentinel-api.sentinel.svc:3001
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentinel-web
+  namespace: sentinel
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: sentinel-web
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http

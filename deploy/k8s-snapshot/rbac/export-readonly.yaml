@@ -1,0 +1,87 @@
+# k8s-snapshot 내보내기 전용 읽기 역할 (사람이 적용한다. 대시보드는 이 파일을 쓰지 않는다)
+# - 대시보드 역할(deploy/rbac.yaml 의 sentinel-readonly)·ServiceAccount 와 별도다. 대시보드 권한을 늘리지 않는다
+# - 동사는 get/list 만. watch·create/update/patch/delete 없음
+# - secrets 없음 (Secret 은 읽지 않고, 워크로드가 참조하는 이름만 secret-refs.json 에 남긴다)
+# - pods, pods/exec, pods/log, pods/portforward, nodes/proxy 없음
+#
+# 적용:   kubectl apply -f deploy/k8s-snapshot/rbac/export-readonly.yaml   (클러스터 관리자 권한으로, 사람이)
+# 연결:   IAM 주체를 그룹 sentinel-snapshot-exporters 에 연결한다 (README 3장, EKS access entry)
+# 확인:   kubectl auth can-i --list --as=<사용자> --as-group=sentinel-snapshot-exporters
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sentinel-snapshot-export
+  labels:
+    app.kubernetes.io/name: sentinel-k8s-snapshot
+    app.kubernetes.io/part-of: sentinel
+rules:
+  # 코어: 네임스페이스(클러스터 ID = kube-system UID, 범위 판단)와 기본 종류
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - services
+      - persistentvolumeclaims
+      - configmaps
+      - serviceaccounts
+      - resourcequotas
+      - limitranges
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["get", "list"]
+  # --- 선택 종류 (SNAPSHOT_OPTIONAL_KINDS 로 켤 때만 필요. 안 쓰면 지워도 된다) ---
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingressclasses"]
+    verbs: ["get", "list"]
+  - apiGroups: ["scheduling.k8s.io"]
+    resources: ["priorityclasses"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list"]
+  # 사용자 지정 리소스 예시 (SNAPSHOT_CUSTOM_RESOURCES 에 적은 것만. discovery 로 선호 버전을 찾는다)
+  # - apiGroups: ["elbv2.k8s.aws"]
+  #   resources: ["targetgroupbindings"]
+  #   verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sentinel-snapshot-export
+  labels:
+    app.kubernetes.io/name: sentinel-k8s-snapshot
+    app.kubernetes.io/part-of: sentinel
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sentinel-snapshot-export
+subjects:
+  # 예시 그룹. EKS: aws eks create-access-entry --kubernetes-groups sentinel-snapshot-exporters (README 3장)
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: sentinel-snapshot-exporters

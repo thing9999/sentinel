@@ -1,0 +1,319 @@
+// 대시보드 자체 DB 스키마 (DBA 담당: 모델은 DBA가 추가한다)
+// 연결 URL은 prisma.config.ts(DATABASE_URL)에서 읽는다 (Prisma 7).
+//
+// 설계·보존 정책·인덱스 근거: docs/db/schema.md
+// 스키마 변경은 항상 마이그레이션으로 한다 (prisma/migrations/, 되돌리기: docs/db/migrations/*.down.sql).
+// 이름 규칙: 모델/필드는 camelCase, DB 테이블/컬럼은 snake_case(@map). 시각은 모두 timestamptz(UTC).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/database/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// 공통
+// ---------------------------------------------------------------------------
+
+/// 데이터를 만든 출처. mock 데이터가 live 기준값(7일 중앙값 등)을 오염시키지 않게 분리한다.
+enum DataSourceMode {
+  mock
+  live
+
+  @@map("data_source_mode")
+}
+
+/// 설정 (key-value). 경고 기준 오버라이드, 월 예산, 캐시·보존 기간 등.
+/// 값의 모양은 key별로 `src/database/settings-defaults.ts`에 정의한다.
+/// 적용 우선순위(권장): 환경 변수(명시된 경우) > 이 테이블 > 코드 기본값.
+model Setting {
+  key         String   @id @db.VarChar(100)
+  value       Json
+  description String?  @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("settings")
+}
+
+// ---------------------------------------------------------------------------
+// aws-cost
+// ---------------------------------------------------------------------------
+
+/// 실시간 추정 시간당 소모율 기록 (5분 간격, 90일 보관).
+/// 비용 급증 판단(지난 7일 중앙값)과 급증 원인(기준 시점 대비 바뀐 리소스)에 쓴다.
+model CostRateSample {
+  id              BigInt         @id @default(autoincrement())
+  dataSource      DataSourceMode @map("data_source")
+  sampledAt       DateTime       @map("sampled_at") @db.Timestamptz(3)
+  /// 추정 시간당 소모율 합계 (USD/h, 단가 없는 리소스 제외)
+  totalUsdPerHour Decimal        @map("total_usd_per_hour") @db.Decimal(14, 6)
+  ec2UsdPerHour   Decimal        @default(0) @map("ec2_usd_per_hour") @db.Decimal(14, 6)
+  ebsUsdPerHour   Decimal        @default(0) @map("ebs_usd_per_hour") @db.Decimal(14, 6)
+  lbUsdPerHour    Decimal        @default(0) @map("lb_usd_per_hour") @db.Decimal(14, 6)
+  eksUsdPerHour   Decimal        @default(0) @map("eks_usd_per_hour") @db.Decimal(14, 6)
+  ipv4UsdPerHour  Decimal        @default(0) @map("ipv4_usd_per_hour") @db.Decimal(14, 6)
+  nodeCount       Int            @map("node_count")
+  /// 단가를 못 찾아 합계에서 빠진 리소스 수
+  unpricedCount   Int            @default(0) @map("unpriced_count")
+  /// 리소스별 요약 [{kind, key, type, option, az, usdPerHour}] (급증 원인 비교용, 비밀값·계정 ID 없음)
+  resources       Json
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([dataSource, sampledAt])
+  @@index([sampledAt])
+  @@map("cost_rate_samples")
+}
+
+/// Cost Explorer 조회 종류
+enum CostExplorerQueryKind {
+  month_to_date
+  service_breakdown
+  daily
+  last_month
+  forecast
+
+  @@map("cost_explorer_query_kind")
+}
+
+enum FetchStatus {
+  ok
+  error
+
+  @@map("fetch_status")
+}
+
+/// Cost Explorer 결과 캐시 (요청 키마다 최신 1건, 기본 6시간 유효).
+/// API 재시작·여러 탭에서도 다시 호출하지 않도록 영속한다.
+model CostExplorerCache {
+  id           BigInt                @id @default(autoincrement())
+  dataSource   DataSourceMode        @map("data_source")
+  kind         CostExplorerQueryKind
+  /// 요청 파라미터(기간, 지표, granularity, groupBy, 필터)의 정규화 해시 (sha256 hex)
+  requestKey   String                @map("request_key") @db.VarChar(64)
+  /// 사람이 읽을 수 있는 요청 요약 (자격 증명·계정 ID 없음)
+  request      Json
+  periodStart  DateTime              @map("period_start") @db.Date
+  periodEnd    DateTime              @map("period_end") @db.Date
+  /// UnblendedCost | AmortizedCost
+  metric       String                @db.VarChar(32)
+  status       FetchStatus
+  /// 정규화된 결과 (status = ok). error면 null
+  result       Json?
+  /// 결과가 반영된 마지막 날 (예: 9월 17일까지 반영)
+  dataThrough  DateTime?             @map("data_through") @db.Date
+  errorCode    String?               @map("error_code") @db.VarChar(100)
+  errorMessage String?               @map("error_message") @db.VarChar(500)
+  fetchedAt    DateTime              @map("fetched_at") @db.Timestamptz(3)
+  expiresAt    DateTime              @map("expires_at") @db.Timestamptz(3)
+
+  @@unique([dataSource, requestKey])
+  @@index([dataSource, kind, fetchedAt(sort: Desc)])
+  @@index([fetchedAt])
+  @@map("cost_explorer_cache")
+}
+
+enum CostExplorerOperation {
+  GetCostAndUsage
+  GetCostForecast
+
+  @@map("cost_explorer_operation")
+}
+
+enum CostExplorerTrigger {
+  scheduled
+  manual
+  startup
+
+  @@map("cost_explorer_trigger")
+}
+
+/// Cost Explorer 호출 기록 (호출당 $0.01). 일일 호출 상한, 수동 새로고침 1시간 제한,
+/// "오늘 호출 수 / 이번 달 추정 CE 호출 비용" 표시에 쓴다. mock 모드는 기록하지 않는다(호출 0회).
+model CostExplorerCallLog {
+  id               BigInt                @id @default(autoincrement())
+  calledAt         DateTime              @map("called_at") @db.Timestamptz(3)
+  operation        CostExplorerOperation
+  trigger          CostExplorerTrigger
+  requestKey       String                @map("request_key") @db.VarChar(64)
+  success          Boolean
+  errorCode        String?               @map("error_code") @db.VarChar(100)
+  durationMs       Int                   @map("duration_ms")
+  /// 호출 비용 추정 (기본 0.01 USD)
+  estimatedCostUsd Decimal               @default(0.01) @map("estimated_cost_usd") @db.Decimal(8, 4)
+
+  @@index([calledAt])
+  @@index([trigger, calledAt(sort: Desc)])
+  @@map("cost_explorer_call_logs")
+}
+
+enum PriceSource {
+  pricing_api
+  spot_price_history
+
+  @@map("price_source")
+}
+
+/// 단가 캐시 (Pricing API 24시간, 스팟 시세 1시간). 못 찾은 단가도 found=false로 캐시한다.
+model PriceCache {
+  id         BigInt      @id @default(autoincrement())
+  source     PriceSource
+  region     String      @db.VarChar(32)
+  /// 예: ec2:m6i.large:linux:shared, ebs:gp3:storage, elb:application, spot:m6i.large:ap-northeast-2a
+  productKey String      @map("product_key") @db.VarChar(200)
+  /// Hrs, GB-Mo, IOPS-Mo, MiBps-Mo ...
+  unit       String      @db.VarChar(32)
+  usdPerUnit Decimal?    @map("usd_per_unit") @db.Decimal(18, 10)
+  found      Boolean     @default(true)
+  /// 요금 조건 요약 (사용 유형, 설명 등). 원본 응답 전체는 저장하지 않는다
+  attributes Json?
+  fetchedAt  DateTime    @map("fetched_at") @db.Timestamptz(3)
+  expiresAt  DateTime    @map("expires_at") @db.Timestamptz(3)
+
+  @@unique([source, region, productKey])
+  @@index([expiresAt])
+  @@map("price_cache")
+}
+
+// ---------------------------------------------------------------------------
+// architecture-advisor
+// ---------------------------------------------------------------------------
+
+enum AdvisorRunStatus {
+  queued
+  running
+  succeeded
+  failed
+  cancelled
+
+  @@map("advisor_run_status")
+}
+
+enum AdvisorFailureReason {
+  bridge_unavailable
+  login_required
+  usage_limit
+  timeout
+  invalid_response
+  /// maxBudgetUsd(settings advisor.limits) 초과로 브리지가 중단함 (20260919150000_advisor_contract)
+  budget_exceeded
+  /// API 재시작 등으로 실행이 중단됨 (시작 시 정리)
+  interrupted
+  other
+
+  @@map("advisor_failure_reason")
+}
+
+/// 어드바이저 분석 실행 이력 (최근 50건 또는 90일 중 먼저 닿는 쪽까지 보관).
+model AdvisorRun {
+  id              String                @id @default(uuid()) @db.Uuid
+  status          AdvisorRunStatus      @default(queued)
+  failureReason   AdvisorFailureReason? @map("failure_reason")
+  /// 사용자에게 보여줄 실패 설명 (비밀값 가림, 500자)
+  errorMessage    String?               @map("error_message") @db.VarChar(500)
+  /// 동시 1건 보장용 잠금. 실행 중(queued/running)일 때만 'active', 끝나면 NULL.
+  /// UNIQUE라 두 번째 실행 생성은 P2002로 실패한다 (NULL은 여러 개 허용).
+  activeLock      String?               @unique @map("active_lock") @db.VarChar(16)
+  dataSource      DataSourceMode        @map("data_source")
+  /// mock에서 브리지 없이 만든 예시 응답이면 true ("예시 응답" 배지)
+  isExample       Boolean               @default(false) @map("is_example")
+  /// 진행(또는 마지막) 단계 = API StageId (snapshot, precheck, request, receiving, finalizing). 재진입 시 표시용
+  stage           String?               @db.VarChar(32)
+  /// 단계별 시각·소요 StageTiming[] = [{id, state, startedAt, finishedAt, durationMs}] (5개 고정 순서, 선택).
+  /// 끝날 때 한 번 저장. NULL이면 이력 화면에서 단계별 소요를 비운다.
+  stageTimings    Json?                 @map("stage_timings")
+  requestedAt     DateTime              @default(now()) @map("requested_at") @db.Timestamptz(3)
+  startedAt       DateTime?             @map("started_at") @db.Timestamptz(3)
+  finishedAt      DateTime?             @map("finished_at") @db.Timestamptz(3)
+  durationMs      Int?                  @map("duration_ms")
+  /// 전송한 스냅샷 전문의 sha256 hex (같은 입력 식별)
+  snapshotHash    String                @map("snapshot_hash") @db.Char(64)
+  /// 이력 목록용 요약 (노드 수, 추정 월 비용, 관측 구간, 생략 건수 등)
+  snapshotSummary Json                  @map("snapshot_summary")
+  /// 브리지로 전송한 스냅샷 전문 (명세 3.4 제외 규칙·비밀값 검사를 통과한 것만)
+  snapshot        Json
+  snapshotBytes   Int                   @map("snapshot_bytes")
+  /// 비밀값 검사로 가린 건수
+  redactedCount   Int                   @default(0) @map("redacted_count")
+  /// 실행 시점의 규칙 기반 사전 점검 결과 전체
+  precheckResults Json                  @map("precheck_results")
+  /// 사전 점검 심각도별 건수 {high, medium, low}
+  precheckSummary Json                  @map("precheck_summary")
+  suggestionCount Int                   @default(0) @map("suggestion_count")
+  highCount       Int                   @default(0) @map("high_count")
+  mediumCount     Int                   @default(0) @map("medium_count")
+  lowCount        Int                   @default(0) @map("low_count")
+  /// 형식 오류로 버린 제안 수
+  droppedCount    Int                   @default(0) @map("dropped_count")
+  /// 응답 형식 오류일 때만 보관하는 원문 (디버그용, 최대 256KB 권장)
+  rawResponse     String?               @map("raw_response")
+  /// 브리지가 알려준 모델 이름 등 (선택)
+  model           String?               @db.VarChar(100)
+  /// 토큰 사용량 등 브리지 메타 (선택)
+  usage           Json?
+
+  suggestions AdvisorSuggestion[]
+
+  @@index([requestedAt(sort: Desc)])
+  @@index([status])
+  @@map("advisor_runs")
+}
+
+enum SuggestionCategory {
+  cost
+  reliability
+  performance
+  security
+  database
+
+  @@map("suggestion_category")
+}
+
+enum Severity {
+  high
+  medium
+  low
+
+  @@map("severity")
+}
+
+enum SavingsSource {
+  server
+  llm
+
+  @@map("savings_source")
+}
+
+/// 어드바이저 제안 한 건 (명세 architecture-advisor 3.5). 실행 삭제 시 함께 삭제.
+model AdvisorSuggestion {
+  id                         String             @id @default(uuid()) @db.Uuid
+  runId                      String             @map("run_id") @db.Uuid
+  run                        AdvisorRun         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  priority                   Int
+  title                      String             @db.VarChar(300)
+  category                   SuggestionCategory
+  severity                   Severity
+  /// 대상 리소스 TargetRef[] = [{kind, namespace, name, snapshotName, inSnapshot, ref}] (docs/api/architecture-advisor.md A.1.3)
+  targets                    Json
+  /// 근거 [{field, value, text}]
+  evidence                   Json
+  /// 연결된 사전 점검 ID (R-REQ 등)
+  precheckIds                String[]           @default([]) @map("precheck_ids")
+  estimatedMonthlySavingsUsd Decimal?           @map("estimated_monthly_savings_usd") @db.Decimal(12, 2)
+  savingsFormula             String?            @map("savings_formula") @db.VarChar(500)
+  savingsSource              SavingsSource?     @map("savings_source")
+  /// 실행 방법 Step[] = [{text, code: {language, content} | null}] (신뢰할 수 없는 텍스트로만 렌더링)
+  steps                      Json
+  riskLevel                  Severity           @map("risk_level")
+  riskReason                 String             @map("risk_reason") @db.VarChar(300)
+  verification               String?
+  /// 대상·근거 리소스가 스냅샷에 없으면 true ("근거 확인 불가", 맨 아래)
+  unverified                 Boolean            @default(false)
+
+  @@unique([runId, priority])
+  @@map("advisor_suggestions")
+}

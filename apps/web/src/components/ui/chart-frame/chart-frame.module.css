@@ -1,0 +1,204 @@
+/* 차트 카드·범례 틀 (status.md 4절). 차트 본체는 프론트 charts/ */
+
+.frame {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.titleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-0-5);
+  min-width: 0;
+  flex: 1 1 200px;
+}
+
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.title {
+  font: var(--font-h3);
+}
+
+.badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-1-5);
+  min-width: 0;
+}
+
+.subtitle {
+  min-width: 0;
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+.headRight {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  max-width: 100%;
+}
+
+.tableToggle {
+  position: relative;
+  height: var(--size-control-sm);
+  padding: 0 calc(var(--spacing-2) + var(--spacing-0-5));
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: var(--font-caption-strong);
+  cursor: pointer;
+}
+
+.tableToggle::before {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--spacing-0-5)) 0;
+}
+
+.tableToggle:hover {
+  background: var(--color-bg-hover);
+}
+
+.tableToggle[aria-pressed="true"] {
+  background: var(--color-bg-pressed);
+  color: var(--color-text-primary);
+}
+
+.legend {
+  justify-content: flex-end;
+}
+
+.plot {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.h-sparkline {
+  height: var(--chart-height-sparkline);
+}
+
+.h-sm {
+  height: var(--chart-height-sm);
+}
+
+.h-md {
+  height: var(--chart-height-md);
+}
+
+.h-lg {
+  height: var(--chart-height-lg);
+}
+
+.h-xl {
+  height: var(--chart-height-xl);
+}
+
+.emptyText {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: var(--font-body);
+  color: var(--color-text-tertiary);
+  pointer-events: none;
+}
+
+.chipLeft {
+  position: absolute;
+  top: var(--spacing-1);
+  left: var(--chart-padding-left);
+  display: inline-flex;
+}
+
+.chipRight {
+  position: absolute;
+  top: var(--spacing-1);
+  right: var(--chart-padding-right);
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--spacing-1);
+  max-width: calc(100% - var(--chart-padding-right));
+}
+
+@media (max-width: 767px) {
+  .chipLeft {
+    left: var(--spacing-2);
+  }
+
+  .chipRight {
+    right: var(--spacing-2);
+  }
+}
+
+.bare {
+  min-width: 0;
+}
+
+/* ───── ChartLegend ───── */
+.legendList {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--spacing-3);
+  row-gap: var(--spacing-1);
+  min-height: var(--spacing-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1-5);
+}
+
+.swatch {
+  width: var(--spacing-2);
+  height: var(--spacing-2);
+  border-radius: var(--radius-xs);
+  background: var(--swatch);
+  flex-shrink: 0;
+}
+
+.swatchDashed {
+  width: var(--spacing-4);
+  height: var(--border-width-thick);
+  border-radius: 0;
+  background: repeating-linear-gradient(90deg, var(--swatch) 0 var(--spacing-1), transparent var(--spacing-1) calc(var(--spacing-1) + var(--spacing-0-5)));
+}
+
+.swatchHatched {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      var(--swatch) 0 var(--chart-hatch-line-width),
+      transparent var(--chart-hatch-line-width) calc(var(--chart-hatch-line-width) + var(--chart-hatch-gap))
+    ),
+    color-mix(in srgb, var(--swatch) calc(var(--opacity-unsettled-bar) * 100%), transparent);
+}

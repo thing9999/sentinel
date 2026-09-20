@@ -1,0 +1,93 @@
+/* 3D 보기 탭 (snapshot-3d.md 4.7 라벨 · 6.2 도구 막대 B · 11.1 조작 도움말) */
+
+/* 블록 라벨: 원근을 따르지 않는 2D 오버레이. halo 위 micro 11/14, 최대 120px 가운데 말줄임 */
+.blockLabel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 140px;
+}
+
+.blockName {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-viz-label-fg);
+  font-size: var(--font-micro-size, 11px);
+  line-height: var(--font-micro-line, 14px);
+}
+
+.blockLabel[data-ghost="true"] .blockName {
+  color: var(--color-text-tertiary);
+}
+
+.meta {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-caption-size, 12px);
+  line-height: var(--font-caption-line, 16px);
+  white-space: nowrap;
+}
+
+.keyList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.keyList > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.keyList dt {
+  font-family: var(--font-mono);
+  font-size: var(--font-caption-size, 12px);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.keyList dd {
+  margin: 0;
+  font-size: var(--font-caption-size, 12px);
+  color: var(--color-text-primary);
+  text-align: right;
+}
+
+/* 블록 보조 줄: 표시 문구·유령 사유 (4.7 — 한 줄만, 나머지는 +N) */
+.blockSub {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--color-viz-label-bg);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-micro-size, 11px);
+  line-height: var(--font-micro-line, 14px);
+}
+
+/* 1280px 미만: 관계·표식 필터를 `필터 ▾` 팝오버 하나로 접는다 (디자인 12절) */
+.filterPopover {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 범례를 한 번도 열어 본 적이 없으면 버튼에 8px 점 (2.3 legendSeen) */
+.legendTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.newDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent-default);
+}

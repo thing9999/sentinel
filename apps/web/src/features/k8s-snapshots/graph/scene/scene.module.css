@@ -1,0 +1,58 @@
+/* 3D 캔버스 + 2D 오버레이 (snapshot-3d.md 4.7·4.8). 색은 tokens.css 의 --color-viz-* 를 쓴다 */
+
+.host {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.app {
+  position: absolute;
+  inset: 0;
+  outline: none;
+}
+
+.app:focus-visible {
+  box-shadow: var(--shadow-focus) inset;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+/* 라벨·표식은 원근을 따르지 않는 2D 오버레이다(1절). 포인터를 가로채지 않는다 */
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform;
+  visibility: hidden;
+}
+
+.item > * {
+  pointer-events: auto;
+}
+
+/* 겹침을 피해 올린 상자(n ≥ 8)는 블록 앵커까지 1px 지시선을 남긴다 (4.7.1 ③).
+   좌우로 비켜 간 만큼(--shift) 되돌려 앵커 자리에 선을 세운다 */
+.item[data-lift="1"]::after {
+  content: "";
+  position: absolute;
+  left: calc(50% - var(--shift, 0px));
+  top: 100%;
+  width: 1px;
+  height: var(--lift, 0);
+  background: var(--color-border-default);
+  pointer-events: none;
+}

@@ -1,0 +1,188 @@
+/*
+ * 퍼블리셔 영역: 페이지 조립용 전역 유틸리티 클래스 (globals.css 가 import).
+ * - 배치(간격·정렬)와 글자 역할만 둔다. 모양(테두리·배경)은 components/ui 를 쓴다.
+ * - 값은 모두 토큰 변수. 간격 숫자는 tokens.json spacing 키와 같다 (gap-3 = --spacing-3 = 12px).
+ * - 모든 flex/grid 컨테이너는 min-width: 0 이라 좁은 화면에서 부모를 밀어내지 않는다.
+ * 사용법: docs/reports/cluster-status/publisher.md "프론트 통합 요청 반영" 9절.
+ */
+
+/* ───────── stack: 세로로 쌓기 (기본 gap 12px) ───────── */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+
+.stack-sm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.stack-lg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  min-width: 0;
+}
+
+/* ───────── row(cluster): 가로로 늘어놓고 넘치면 줄바꿈 (기본 gap 8px) ───────── */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+/* 양 끝 정렬 (제목 ↔ 버튼). 좁으면 줄바꿈 */
+.row-between {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+
+/* row 보조: 줄바꿈 안 함 / 기준선·위 정렬 / 오른쪽 몰기 */
+.row-nowrap {
+  flex-wrap: nowrap;
+}
+
+.row-baseline {
+  align-items: baseline;
+}
+
+.row-start {
+  align-items: flex-start;
+}
+
+.row-end {
+  justify-content: flex-end;
+}
+
+/* ───────── grid ───────── */
+/* 칸 수 대신 최소 폭으로 자동 배치. --grid-min 으로 바꾼다(기본 240px). 360px 에서도 넘치지 않게 min(100%, …) */
+.grid-auto {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--grid-min, 240px)), 1fr));
+  gap: var(--spacing-4);
+  min-width: 0;
+}
+
+/* 이름 | 값 두 칸 (예: 라벨 + UsageBar). --label-width 로 첫 칸 폭(기본 96px). 479px 이하 세로로 */
+.label-row {
+  display: grid;
+  grid-template-columns: var(--label-width, 96px) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--spacing-3);
+  min-height: 28px;
+  min-width: 0;
+}
+
+@media (max-width: 479px) {
+  .label-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--spacing-1);
+  }
+}
+
+/* ───────── gap: stack·row·grid 의 간격 덮어쓰기 (tokens spacing 키) ───────── */
+.gap-0 { gap: var(--spacing-0); }
+.gap-0-5 { gap: var(--spacing-0-5); }
+.gap-1 { gap: var(--spacing-1); }
+.gap-1-5 { gap: var(--spacing-1-5); }
+.gap-2 { gap: var(--spacing-2); }
+.gap-3 { gap: var(--spacing-3); }
+.gap-4 { gap: var(--spacing-4); }
+.gap-5 { gap: var(--spacing-5); }
+.gap-6 { gap: var(--spacing-6); }
+.gap-8 { gap: var(--spacing-8); }
+
+/* ───────── 자식 크기 ───────── */
+.min-w-0 { min-width: 0; }
+.grow { flex: 1 1 0; min-width: 0; }
+.shrink-0 { flex-shrink: 0; }
+.push-end { margin-inline-start: auto; }
+.text-end { text-align: right; justify-self: end; }
+
+/* 한 줄 말줄임 (전체 문구는 title/Tooltip 으로) */
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ───────── 글자 역할 (tokens typography) ───────── */
+.text-body {
+  font: var(--font-body);
+  color: var(--color-text-primary);
+}
+
+.text-strong {
+  font: var(--font-body-strong);
+}
+
+.text-caption {
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+.text-caption-tertiary {
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+.text-micro {
+  font: var(--font-micro);
+  color: var(--color-text-tertiary);
+}
+
+.text-h3 {
+  font: var(--font-h3);
+  margin: 0;
+}
+
+/* 리소스 이름 등 (.mono 는 글꼴만, .text-mono 는 크기까지) */
+.text-mono {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-caption-size);
+}
+
+/* 오래된 값 (status.md stale) */
+.text-stale {
+  color: var(--color-status-stale-value-text);
+}
+
+.text-link {
+  color: var(--color-text-link);
+  text-decoration: none;
+}
+
+.text-link:hover {
+  color: var(--color-text-link-hover);
+  text-decoration: underline;
+}
+
+/* ───────── 목록 ───────── */
+.list-bullet {
+  margin: 0;
+  padding-left: var(--spacing-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  font: var(--font-body);
+}
+
+.list-plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}

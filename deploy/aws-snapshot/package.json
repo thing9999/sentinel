@@ -1,0 +1,19 @@
+{
+  "name": "sentinel-aws-snapshot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dashboard-external tool: export current AWS config to CloudFormation/Terraform with Former2 (read-only). No apply.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "export": "node export.mjs",
+    "export:dry": "node export.mjs --dry-run",
+    "scan": "node scan.mjs",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "dependencies": {
+    "former2": "0.2.83"
+  }
+}

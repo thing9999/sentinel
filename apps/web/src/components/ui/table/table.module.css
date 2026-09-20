@@ -1,0 +1,546 @@
+/* components.md 7절 표 / status.md 5절 */
+
+/* ───── DataTable ───── */
+.tableBlock {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tableTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  min-height: var(--size-control-sm);
+  margin-bottom: var(--spacing-2);
+}
+
+.countText {
+  font: var(--font-caption);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--color-text-secondary);
+}
+
+/* 가로 스크롤은 이 컨테이너 안에서만 */
+.scroll {
+  position: relative;
+  max-width: 100%;
+  overflow: auto;
+  border: var(--border-width-thin) solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  overscroll-behavior-x: contain;
+}
+
+.scroll:focus-visible {
+  outline-offset: calc(-1 * var(--size-focus-ring-width));
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font: var(--font-table);
+  color: var(--color-text-primary);
+}
+
+.th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: var(--size-table-header);
+  padding: 0 var(--spacing-3);
+  background: var(--color-bg-surface-sunken);
+  border-bottom: var(--border-width-thin) solid var(--color-border-subtle);
+  font: var(--font-caption-strong);
+  color: var(--color-text-secondary);
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* --row-indent: 트리 모양 표의 들여쓰기 (DataTable rowIndent, components.md 17.1) */
+.th:first-child,
+.td:first-child {
+  padding-left: calc(var(--spacing-4) + var(--row-indent, 0px));
+}
+
+.thInner,
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  max-width: 100%;
+}
+
+.sortButton {
+  margin: 0 calc(-1 * var(--spacing-1));
+  padding: var(--spacing-1);
+  min-height: var(--size-control-sm);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sortButton:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.alignRight .sortButton,
+.alignRight .thInner {
+  flex-direction: row-reverse;
+}
+
+.thText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thBadge {
+  display: inline-flex;
+}
+
+.sortIcon {
+  flex-shrink: 0;
+}
+
+.td {
+  padding: 0 var(--spacing-3);
+  border-bottom: var(--border-width-thin) solid var(--color-border-subtle);
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.alignRight {
+  text-align: right;
+}
+
+.alignCenter {
+  text-align: center;
+}
+
+.numeric {
+  font-variant-numeric: var(--font-numeric);
+}
+
+.staleRow .numeric {
+  color: var(--color-status-stale-value-text);
+}
+
+.stickyLeft {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-bg-surface);
+}
+
+.th.stickyLeft {
+  z-index: 3;
+  background: var(--color-bg-surface-sunken);
+}
+
+.tr {
+  background: var(--color-bg-surface);
+}
+
+.tr:hover > .td {
+  background: var(--color-bg-hover);
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.tr:focus-visible {
+  outline-offset: calc(-1 * var(--size-focus-ring-width));
+}
+
+.selected > .td {
+  background: var(--color-bg-selected);
+}
+
+/* 선택: 왼쪽 3px accent / crit·warn 강조: 왼쪽 3px solid */
+.selected > .td:first-child {
+  box-shadow: inset var(--border-width-accent) 0 0 var(--color-accent-default);
+}
+
+.accentCrit > .td:first-child {
+  box-shadow: inset var(--border-width-accent) 0 0 var(--color-status-crit-solid);
+}
+
+.accentWarn > .td:first-child {
+  box-shadow: inset var(--border-width-accent) 0 0 var(--color-status-warn-solid);
+}
+
+.pinned > .td {
+  background: var(--color-bg-surface-sunken);
+  color: var(--color-text-secondary);
+}
+
+.totalRow > .td {
+  border-top: var(--border-width-thick) solid var(--color-border-default);
+  font: var(--font-body-strong);
+  font-variant-numeric: var(--font-numeric);
+}
+
+.groupRow > .td {
+  background: var(--color-bg-surface-sunken);
+}
+
+.groupCell {
+  padding-left: var(--spacing-2) !important;
+}
+
+.groupInner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.expanderCell {
+  width: var(--spacing-8);
+  padding: 0 0 0 var(--spacing-2) !important;
+}
+
+.expandedRow > .expandedCell {
+  padding: var(--spacing-3) var(--spacing-4);
+  background: var(--color-bg-surface-sunken);
+  border-bottom: var(--border-width-thin) solid var(--color-border-subtle);
+}
+
+.stateCell {
+  padding: 0;
+  height: 200px;
+}
+
+.spacer {
+  padding: 0;
+  border: 0;
+}
+
+.compact .td {
+  font: var(--font-table);
+}
+
+/* components.md 12.3: comfortable 56px, 셀 위아래 패딩 8px, 2줄 셀 */
+.comfortable .td {
+  padding-top: var(--spacing-2);
+  padding-bottom: var(--spacing-2);
+  font: var(--font-table);
+}
+
+.cell2 {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.alignRight .cell2 {
+  align-items: flex-end;
+}
+
+.alignCenter .cell2 {
+  align-items: center;
+}
+
+.cell2Primary {
+  font: var(--font-table);
+  color: var(--color-text-primary);
+  min-width: 0;
+}
+
+.cell2Strong {
+  font-weight: var(--font-body-strong-weight);
+  font-variant-numeric: var(--font-numeric);
+}
+
+.cell2Secondary {
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+  min-width: 0;
+}
+
+.cell2Truncate > .cell2Primary,
+.cell2Truncate > .cell2Secondary {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.linkButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-link);
+  font: var(--font-caption-strong);
+  cursor: pointer;
+  min-height: var(--size-min-hit-target);
+}
+
+.linkButton:hover {
+  color: var(--color-text-link-hover);
+  text-decoration: underline;
+}
+
+@media (max-width: 1279px) {
+  .hideBelow1280 {
+    display: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  .hideBelow1024 {
+    display: none;
+  }
+}
+
+/* ───── ResourceName ───── */
+.rn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.rnTooltip {
+  min-width: 0;
+}
+
+.rnText {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  font: var(--font-resource-name);
+  color: var(--color-text-primary);
+}
+
+.rnLink {
+  color: var(--color-text-link);
+  text-decoration: none;
+}
+
+.rnLink:hover {
+  color: var(--color-text-link-hover);
+  text-decoration: underline;
+}
+
+.rnVisual {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.rnNamespace {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  white-space: pre;
+}
+
+.rnHead {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rnTail {
+  flex-shrink: 0;
+}
+
+/* 복사 버튼: 이름 또는 행 hover·포커스 때만 보인다 */
+.rnCopy {
+  display: inline-flex;
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.rn:hover .rnCopy,
+.rn:focus-within .rnCopy,
+:global(tr:hover) .rnCopy {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .rnCopy {
+    opacity: 1;
+  }
+}
+
+/* ───── KeyValueList ───── */
+.kv {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: var(--spacing-6);
+  margin: 0;
+  min-width: 0;
+}
+
+.kv2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 767px) {
+  .kv2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.kvRow {
+  display: grid;
+  grid-template-columns: minmax(0, var(--kv-label-w, 120px)) minmax(0, 1fr);
+  column-gap: var(--spacing-3);
+  align-items: baseline;
+  min-height: var(--spacing-8);
+  padding: var(--spacing-1-5) 0;
+}
+
+.kvLabel {
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.kvValue {
+  margin: 0;
+  min-width: 0;
+  font: var(--font-body);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.kvHint {
+  display: block;
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+/* components.md 12.5: 값 아래 4px caption, 아이콘 12px */
+.kvNote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-1);
+  margin-top: var(--spacing-1);
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+.kvNote > svg {
+  flex-shrink: 0;
+  margin-top: var(--spacing-0-5);
+}
+
+.kvNote-warn {
+  color: var(--color-status-warn-fg);
+}
+
+.kvNote-info {
+  color: var(--color-info-fg);
+}
+
+.kvNote-crit {
+  color: var(--color-status-crit-fg);
+}
+
+/* ───── DistributionBar ───── */
+.dist {
+  display: flex;
+  gap: var(--border-width-thin);
+  width: 100%;
+  min-width: var(--spacing-12);
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  background: var(--color-bg-surface);
+  vertical-align: middle;
+}
+
+.dist4 {
+  height: var(--spacing-1);
+}
+
+.dist8 {
+  height: var(--spacing-2);
+}
+
+.distEmpty {
+  flex: 1;
+  background: var(--color-bg-surface-sunken);
+}
+
+.distSegWrap {
+  display: flex;
+  flex-basis: 0;
+  min-width: var(--border-width-thick);
+}
+
+.distTip {
+  display: flex;
+  flex: 1;
+}
+
+.distSeg {
+  display: block;
+  flex: 1;
+  height: 100%;
+  background: var(--color-border-strong);
+}
+
+.distSeg-ok {
+  background: var(--color-status-ok-solid);
+}
+
+.distSeg-warn {
+  background: var(--color-status-warn-solid);
+}
+
+.distSeg-crit {
+  background: var(--color-status-crit-solid);
+}
+
+.distSeg-unknown {
+  background: var(--color-status-unknown-solid);
+}
+
+.distSeg-stale {
+  background: var(--color-status-stale-solid);
+}
+
+/* 셀 전체 링크 (TableLinkCell, k8s-snapshot 3.4): 셀 패딩까지 덮는다 */
+.cellLink {
+  display: block;
+  min-width: 0;
+  margin: 0 calc(-1 * var(--spacing-3));
+  padding: 0 var(--spacing-3);
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.comfortable .cellLink {
+  margin-top: calc(-1 * var(--spacing-2));
+  margin-bottom: calc(-1 * var(--spacing-2));
+  padding-top: var(--spacing-2);
+  padding-bottom: var(--spacing-2);
+}
+
+.cellLink:hover {
+  background: var(--color-bg-hover);
+  color: inherit;
+  text-decoration: none;
+}
+
+/* td 가 overflow: hidden 이라 포커스 링을 안쪽에 그린다 */
+.cellLink:focus-visible {
+  outline-offset: calc(-1 * var(--size-focus-ring-width));
+}

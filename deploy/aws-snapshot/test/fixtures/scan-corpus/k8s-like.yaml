@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: "{}"
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: POSTGRES_PASSWORD
+              value: example-password
+            - name: TOKEN
+              valueFrom:
+                secretKeyRef: {name: s, key: t}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: s
+stringData:
+  password: example-secret
+  .dockerconfigjson: "{\"auths\":{\"r\":{\"auth\":\"dXNlcjpwYXNz\"}}}"
+---
+kind: ConfigMap
+data:
+  DB_PASSWORD: ""
+  API_TOKEN: real-token-value

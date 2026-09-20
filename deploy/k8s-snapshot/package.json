@@ -1,0 +1,20 @@
+{
+  "name": "sentinel-k8s-snapshot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dashboard-external tool: export Kubernetes resources as re-appliable YAML (read-only: get/list only). No apply.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "export": "node export.mjs",
+    "export:dry": "node export.mjs --dry-run",
+    "scan": "node scan.mjs",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "dependencies": {
+    "@kubernetes/client-node": "2.0.0",
+    "yaml": "^2.9.1"
+  }
+}
