@@ -6,6 +6,11 @@ import type { AdvisorState, PrecheckItem, PrechecksResponse, Run, RunsResponse, 
 import type { CostSnapshot, RateSeries } from "../aws-cost/types";
 import type {
   ClusterSnapshot,
+  ControlPlaneBody,
+  ControlPlaneCellState,
+  ControlPlaneComponent,
+  ControlPlaneComponentKind,
+  ControlPlaneMasterItem,
   DbResponse,
   EventItem,
   MetricsSeriesResponse,
@@ -36,23 +41,27 @@ export function buildFixtures(now: number) {
   });
 
   // ───────── 노드 ─────────
+  // kOps 노드 이름은 EC2 인스턴스 ID 형태다 (api mock 확정값, 명세 F10)
   const nodeNames = [
-    "ip-10-0-12-34.ap-northeast-2.compute.internal",
-    "ip-10-0-12-35.ap-northeast-2.compute.internal",
-    "ip-10-0-20-11.ap-northeast-2.compute.internal",
-    "ip-10-0-20-12.ap-northeast-2.compute.internal",
-    "ip-10-0-40-7.ap-northeast-2.compute.internal",
-    "ip-10-0-41-9.ap-northeast-2.compute.internal",
+    "i-0a7b8c9d0e1f2a3b4",
+    "i-0b8c9d0e1f2a3b4c5",
+    "i-0c9d0e1f2a3b4c5d6",
+    "i-0d4e5f6a7b8c9d0e1",
+    "i-0e5f6a7b8c9d0e1f2",
+    "i-0f6a7b8c9d0e1f2a3",
   ];
+  /** 컨트롤 플레인(마스터). kOps는 마스터도 사용자 EC2라 같은 노드 목록에 나온다 (kops-support 1.2) */
+  const masterNames = ["i-0a1b2c3d4e5f67890", "i-0b2c3d4e5f6789012", "i-0c3d4e5f6a7b8c9d0"];
   const node = (i: number, status: StatusInfo, extra: Partial<NodeItem> = {}): NodeItem => ({
     name: nodeNames[i],
     status,
+    role: "worker",
     instanceType: i < 4 ? "m6i.large" : i === 4 ? "m6i.large" : "c7i.xlarge",
     zone: i % 2 === 0 ? "ap-northeast-2a" : "ap-northeast-2c",
-    nodeGroup: i < 2 ? "batch" : i < 4 ? "system" : "spot-workers",
+    nodeGroup: i < 2 ? "nodes-batch" : i < 4 ? "nodes-app-arm64" : "nodes-system",
     capacityType: i >= 4 ? "spot" : "on_demand",
     architecture: "amd64",
-    kubeletVersion: "v1.30.2-eks-1552ad0",
+    kubeletVersion: "v1.34.1",
     createdAt: iso(12 * DAY),
     ready: { value: "True", since: iso(12 * DAY) },
     unschedulable: false,
@@ -64,7 +73,22 @@ export function buildFixtures(now: number) {
     pods: { count: 12 + i, max: 29, pct: ((12 + i) / 29) * 100 },
     ...extra,
   });
-  const nodes: NodeItem[] = [
+  const master = (i: number, status: StatusInfo, extra: Partial<NodeItem> = {}): NodeItem =>
+    node(i, status, {
+      name: masterNames[i],
+      role: "control_plane",
+      instanceType: "t3.medium",
+      zone: `ap-northeast-2${"abc"[i]}`,
+      nodeGroup: `control-plane-ap-northeast-2${"abc"[i]}`,
+      capacityType: "on_demand",
+      allocatable: { cpuMillicores: 1930, memoryBytes: 3650722816, pods: 17 },
+      usage: { cpuMillicores: 380 + i * 20, memoryBytes: 1_400_000_000, cpuPct: 19.7, memoryPct: 38.4, updatedAt: iso(5_000) },
+      requests: { cpuMillicores: 450, memoryBytes: 1_073_741_824, cpuPct: 23.3, memoryPct: 29.4 },
+      limits: { cpuMillicores: 0, memoryBytes: 0, cpuPct: 0, memoryPct: 0 },
+      pods: { count: 5, max: 17, pct: (5 / 17) * 100 },
+      ...extra,
+    });
+  const workerNodes: NodeItem[] = [
     node(0, st("critical", [["NODE_NOT_READY", "NotReady 3분"]], 3 * MIN), {
       ready: { value: "Unknown", since: iso(3 * MIN) },
       usage: null,
@@ -76,6 +100,184 @@ export function buildFixtures(now: number) {
     node(4, st("ok")),
     node(5, st("ok")),
   ];
+  const masterNodes: NodeItem[] = [
+    master(0, st("ok")),
+    // 구성요소 장애 1칸 + 없음 1칸 (cp-component-crash 와 같은 모양)
+    master(1, st("critical", [["CONTROL_PLANE_COMPONENT_CRASHLOOP", "kube-scheduler CrashLoopBackOff · 최근 1시간 재시작 4회"]], 6 * MIN)),
+    // 보고를 멈춘 마스터 (cp-node-down). 이 마스터의 5칸은 파드가 Running 이어도 not_reporting 이다 (AC-KOPS21)
+    master(2, st("warning", [["CONTROL_PLANE_MASTER_NOT_READY", "NotReady 4분"]], 4 * MIN), {
+      ready: { value: "Unknown", since: iso(4 * MIN) },
+      usage: null,
+    }),
+  ];
+  /** cluster.snapshot 의 `nodes` 에는 마스터도 들어 있다 (계약 8.2). 화면이 role 로 나눈다 */
+  const nodes: NodeItem[] = [...workerNodes, ...masterNodes];
+
+  // ───────── 컨트롤 플레인 (계약 3.3) ─────────
+  // 셀 상태·문구·요약·대표 사유는 **전부 서버 값**이다. 화면은 조건을 조합하지 않는다.
+  const CP_KINDS: ControlPlaneComponentKind[] = [
+    "kube-apiserver",
+    "kube-controller-manager",
+    "kube-scheduler",
+    "etcd-manager-main",
+    "etcd-manager-events",
+  ];
+  const cpCell = (
+    kind: ControlPlaneComponentKind,
+    nodeName: string,
+    o: Partial<ControlPlaneComponent> & { cellState: ControlPlaneCellState; cellText: string },
+  ): ControlPlaneComponent => ({
+    kind,
+    nodeName,
+    podKey: `kube-system/${kind}-${nodeName.split(".")[0]}`,
+    cellDetail: null,
+    cellTooltip: null,
+    status: st("ok"),
+    ready: true,
+    containers: { ready: 1, total: 1 },
+    waitingReason: null,
+    restarts: { last1h: 0, last24h: 0, total: 0, observedSec: 3600 },
+    lastTermination: null,
+    startedAt: iso(12 * DAY),
+    lastReportedAt: iso(5_000),
+    clickable: true,
+    ...o,
+    // 서버 규칙(`log-href.ts`)이 만든 모양 그대로: 미러 파드 링크 + `follow=1`, 파드가 없으면(`missing`) null
+    logHref:
+      o.logHref !== undefined
+        ? o.logHref
+        : o.cellState === "missing"
+          ? null
+          : `/logs?namespace=kube-system&pod=${encodeURIComponent(`${kind}-${nodeName.split(".")[0]}`)}&follow=1`,
+  });
+  const cpComponents: ControlPlaneComponent[] = [
+    // 마스터 1: 전부 정상
+    ...CP_KINDS.map((k) => cpCell(k, masterNames[0], { cellState: "ok", cellText: "Ready" })),
+    // 마스터 2: kube-scheduler 장애, etcd-manager-events 없음
+    ...CP_KINDS.map((k) => {
+      if (k === "kube-scheduler") {
+        return cpCell(k, masterNames[1], {
+          cellState: "critical",
+          cellText: "장애",
+          cellDetail: "CrashLoopBackOff · 재시작 4회",
+          cellTooltip: "kube-scheduler · 장애 · CrashLoopBackOff · 최근 1시간 재시작 4회 · 마지막 종료 OOMKilled 14:01:52",
+          status: st("critical", [["CONTROL_PLANE_COMPONENT_CRASHLOOP", "kube-scheduler CrashLoopBackOff"]], 6 * MIN),
+          ready: false,
+          containers: { ready: 0, total: 1 },
+          waitingReason: "CrashLoopBackOff",
+          restarts: { last1h: 4, last24h: 9, total: 31, observedSec: 3600 },
+          lastTermination: { reason: "OOMKilled", exitCode: 137, finishedAt: iso(3 * MIN) },
+        });
+      }
+      if (k === "etcd-manager-events") {
+        return cpCell(k, masterNames[1], {
+          cellState: "missing",
+          cellText: "없음",
+          cellDetail: "필수 구성요소가 보이지 않습니다",
+          cellTooltip: "etcd-manager-events · 없음 · 이 마스터에서 필수 구성요소 파드를 찾지 못했습니다",
+          podKey: null,
+          status: st("warning", [["CONTROL_PLANE_COMPONENT_MISSING", "etcd-manager-events 없음"]]),
+          ready: null,
+          containers: null,
+          startedAt: null,
+          lastReportedAt: null,
+          clickable: false,
+        });
+      }
+      return cpCell(k, masterNames[1], { cellState: "ok", cellText: "Ready" });
+    }),
+    // 마스터 3: 노드가 보고를 멈춤 → 5칸 전부 not_reporting (파드가 Running 이어도)
+    ...CP_KINDS.map((k) =>
+      cpCell(k, masterNames[2], {
+        cellState: "not_reporting",
+        cellText: "노드 미보고",
+        cellDetail: "마지막 보고 04:58",
+        cellTooltip: `${k} · 노드 미보고 · 마스터 ${masterNames[2].split(".")[0]} 가 NotReady 라 상태를 믿을 수 없습니다 (마지막 보고 04:58)`,
+        status: st("unknown", [["CONTROL_PLANE_NODE_NOT_REPORTING", "노드 미보고"]], 4 * MIN),
+        ready: null,
+        containers: null,
+        lastReportedAt: iso(4 * MIN),
+        clickable: false,
+      }),
+    ),
+  ];
+  const cpMaster = (i: number, o: Partial<ControlPlaneMasterItem> = {}): ControlPlaneMasterItem => ({
+    node: masterNodes[i],
+    reporting: true,
+    lastReportedAt: iso(5_000),
+    components: { ready: 5, total: 5, worst: "ok" },
+    workerPodCount: 0,
+    reasonText: null,
+    ...o,
+  });
+  const controlPlane: ControlPlaneBody = {
+    found: true,
+    notFoundReason: null,
+    status: st("critical", [["CONTROL_PLANE_COMPONENT_CRASHLOOP", "kube-scheduler CrashLoopBackOff · 최근 1시간 재시작 4회"]], 6 * MIN),
+    headline: "kube-scheduler CrashLoopBackOff · 최근 1시간 재시작 4회",
+    masters: {
+      ready: 2,
+      total: 3,
+      haExpected: true,
+      haStatus: "ok",
+      quorum: { state: "at_risk", requiredReady: 2, readyMasters: 2, basis: "master_node_count" },
+      zones: [
+        { zone: "ap-northeast-2a", count: 1 },
+        { zone: "ap-northeast-2b", count: 1 },
+        { zone: "ap-northeast-2c", count: 1 },
+      ],
+      zoneSpread: "spread",
+      totals: {
+        available: true,
+        cpu: { allocatableMillicores: 5790, usageMillicores: 1160, usagePct: 20, requestsMillicores: 1350, requestsPct: 23.3 },
+        memory: { allocatableBytes: 10952168448, usageBytes: 4200000000, usagePct: 38.3, requestsBytes: 3221225472, requestsPct: 29.4 },
+      },
+      items: [
+        cpMaster(0),
+        cpMaster(1, { components: { ready: 3, total: 5, worst: "critical" }, reasonText: "kube-scheduler CrashLoopBackOff" }),
+        cpMaster(2, {
+          reporting: false,
+          lastReportedAt: iso(4 * MIN),
+          components: { ready: 0, total: 5, worst: "unknown" },
+          workerPodCount: null,
+          reasonText: "NotReady 4분",
+        }),
+      ],
+    },
+    components: {
+      requiredKinds: CP_KINDS,
+      ready: 8,
+      total: 15,
+      cellCounts: { total: 15, ok: 8, warning: 0, critical: 1, notReporting: 5, unknown: 0, missing: 1, stale: 0, unknownTotal: 6 },
+      summaryText: "필수 15칸 · 정상 8 · 주의 0 · 장애 1 · 알 수 없음 6",
+      columns: [
+        { nodeName: masterNames[0], reporting: true, lastReportedAt: iso(5_000), worst: "ok", reason: null },
+        { nodeName: masterNames[1], reporting: true, lastReportedAt: iso(5_000), worst: "critical", reason: "kube-scheduler CrashLoopBackOff" },
+        { nodeName: masterNames[2], reporting: false, lastReportedAt: iso(4 * MIN), worst: "unknown", reason: "NotReady 4분" },
+      ],
+      byKind: [
+        { kind: "kube-apiserver", ready: 2, expected: 3, status: "warning" },
+        { kind: "kube-controller-manager", ready: 2, expected: 3, status: "warning" },
+        { kind: "kube-scheduler", ready: 1, expected: 3, status: "critical" },
+        { kind: "etcd-manager-main", ready: 2, expected: 3, status: "warning" },
+        { kind: "etcd-manager-events", ready: 1, expected: 3, status: "warning" },
+      ],
+      items: cpComponents,
+    },
+    others: [
+      { name: `kops-controller-${masterNames[0].split(".")[0]}`, nodeName: masterNames[0], status: "ok", ready: true, restarts1h: 0 },
+      { name: `kube-apiserver-healthcheck-${masterNames[0].split(".")[0]}`, nodeName: masterNames[0], status: "ok", ready: true, restarts1h: 0 },
+    ],
+    thresholds: { restarts1h: { warn: 1, crit: 3 }, componentNotReadySec: 120, masterNotReadySec: 60 },
+    limits: {
+      etcdInternalMetrics: false,
+      notes: [
+        { code: "CP_APISERVER_SELF_DEPENDENCY", text: "apiserver가 모두 중단되면 이 대시보드도 클러스터를 조회할 수 없어 '연결 끊김'으로 보입니다." },
+        { code: "CP_NO_ETCD_INTERNALS", text: "etcd 내부 지표(fsync·리더 변경)는 표시하지 않습니다." },
+        { code: "CP_QUORUM_APPROX", text: "쿼럼은 마스터 노드 수 기준 근사입니다(etcd 멤버 목록은 조회하지 않습니다)." },
+      ],
+    },
+  };
 
   // ───────── 워크로드·파드 ─────────
   const wl = (kind: WorkloadItem["kind"], ns: string, name: string, status: StatusInfo, extra: Partial<WorkloadItem> = {}): WorkloadItem => ({
@@ -95,6 +297,7 @@ export function buildFixtures(now: number) {
     hasPdb: false,
     hpa: null,
     source: "watch",
+    logHref: `/logs?namespace=${ns}&workload=${encodeURIComponent(`${kind}/${ns}/${name}`)}&follow=1`,
     ...extra,
   });
   const workloads: WorkloadItem[] = [
@@ -102,14 +305,14 @@ export function buildFixtures(now: number) {
       replicas: { desired: 3, ready: 0, updated: 3, available: 0 },
       rollout: { state: "progressing", reason: "ReplicaSetUpdated" },
       podCounts: { critical: 3, warning: 0, ok: 0, unknown: 0 },
-      images: ["123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/api:1.4.2", "fluent-bit:3.1"],
+      images: ["123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/api:1.4.2", "registry.k8s.io/metrics-server/metrics-server:v0.7.2"],
     }),
     wl("Deployment", "prod", "web", st("warning", [["WORKLOAD_PARTIAL_READY", "ready 1/2"]]), {
       replicas: { desired: 2, ready: 1, updated: 2, available: 1 },
       podCounts: { critical: 0, warning: 1, ok: 1, unknown: 0 },
     }),
     wl("StatefulSet", "data", "postgres", st("ok"), { replicas: { desired: 1, ready: 1, updated: 1, available: 1 }, podCounts: { critical: 0, warning: 0, ok: 1, unknown: 0 } }),
-    wl("DaemonSet", "kube-system", "aws-node", st("ok", [["DAEMONSET_DESIRED_UNKNOWN", "desired 알 수 없음 (daemonsets 조회 권한 없음)"]]), {
+    wl("DaemonSet", "kube-system", "cilium", st("ok", [["DAEMONSET_DESIRED_UNKNOWN", "desired 알 수 없음 (daemonsets 조회 권한 없음)"]]), {
       replicas: { desired: null, ready: 6, updated: null, available: null },
       source: "derived_from_pods",
       podCounts: { critical: 0, warning: 0, ok: 6, unknown: 0 },
@@ -144,6 +347,7 @@ export function buildFixtures(now: number) {
     limits: { cpuMillicores: 600, memoryBytes: 536870912 },
     memoryLimitPct: 55.9,
     cpuRequestPct: 40,
+    logHref: `/logs?namespace=${ns}&pod=${encodeURIComponent(name)}&follow=1`,
     ...extra,
   });
   const pods: PodItem[] = [
@@ -170,8 +374,8 @@ export function buildFixtures(now: number) {
     pod("data", "postgres-0", st("ok"), { owner: { kind: "StatefulSet", name: "postgres", workloadKey: "StatefulSet/data/postgres" }, nodeName: nodeNames[1] }),
     pod("batch", "nightly-job-28471-abcde", st("ok"), { phase: "Succeeded", completed: true, owner: { kind: "Job", name: "nightly-job-28471", workloadKey: null } }),
     ...nodeNames.map((n, i) =>
-      pod("kube-system", `aws-node-${["a1b2c", "d3e4f", "g5h6i", "j7k8l", "m9n0o", "p1q2r"][i]}`, st("ok"), {
-        owner: { kind: "DaemonSet", name: "aws-node", workloadKey: "DaemonSet/kube-system/aws-node" },
+      pod("kube-system", `cilium-${["a1b2c", "d3e4f", "g5h6i", "j7k8l", "m9n0o", "p1q2r"][i]}`, st("ok"), {
+        owner: { kind: "DaemonSet", name: "cilium", workloadKey: "DaemonSet/kube-system/cilium" },
         nodeName: n,
       }),
     ),
@@ -189,18 +393,21 @@ export function buildFixtures(now: number) {
       lastSeenAt: iso(20_000),
       severe: true,
       sourceComponent: "kubelet",
+      // "지난 시점": follow 없이 `at=<lastSeenAt>` (logs 11.4)
+      logHref: `/logs?namespace=prod&pod=api-7f9c8d6b5-x2kq9&at=${encodeURIComponent(iso(20_000))}`,
     },
     {
       key: "7d5d2b0f-9e1f-4c1f-b7a2-4a1b8f0d3c22",
       namespace: null,
       involvedObject: { kind: "Node", namespace: null, name: nodeNames[0] },
       reason: "NodeNotReady",
-      message: "Node ip-10-0-12-34.ap-northeast-2.compute.internal status is now: NodeNotReady",
+      message: "Node i-0a7b8c9d0e1f2a3b4 status is now: NodeNotReady",
       count: 1,
       firstSeenAt: iso(3 * MIN),
       lastSeenAt: iso(3 * MIN),
       severe: true,
       sourceComponent: "node-controller",
+      logHref: null,
     },
   ];
 
@@ -224,12 +431,24 @@ export function buildFixtures(now: number) {
 
   const areas: OverviewResponse["areas"] = {
     nodes: {
-      status: st("critical", [["NODE_NOT_READY", "ip-10-0-12-34 NotReady 3분"]], 3 * MIN),
+      status: st("critical", [["NODE_NOT_READY", "i-0a7b8c9d0e1f2a3b4 NotReady 3분"]], 3 * MIN),
       ready: 5,
       total: 6,
       problems: [
         { ref: { kind: "Node", namespace: null, name: nodeNames[0] }, status: "critical", reason: "NotReady 3분" },
         { ref: { kind: "Node", namespace: null, name: nodeNames[1] }, status: "warning", reason: "스케줄 제외 (cordon)" },
+      ],
+    },
+    controlPlane: {
+      status: controlPlane.status,
+      found: true,
+      masters: { ready: controlPlane.masters.ready, total: controlPlane.masters.total },
+      components: { ready: controlPlane.components.ready, total: controlPlane.components.total },
+      quorum: controlPlane.masters.quorum,
+      haExpected: true,
+      problems: [
+        { ref: { kind: "Node", namespace: null, name: masterNames[1] }, status: "critical", reason: "kube-scheduler CrashLoopBackOff" },
+        { ref: { kind: "Node", namespace: null, name: masterNames[2] }, status: "warning", reason: "NotReady 4분 · 구성요소 5종 알 수 없음" },
       ],
     },
     workloads: {
@@ -258,7 +477,7 @@ export function buildFixtures(now: number) {
     metrics: { status: st("ok"), available: true },
   };
 
-  const clusterInfo = { name: "prod-eks", version: "v1.30.4", region: "ap-northeast-2", connected: true };
+  const clusterInfo = { name: "prod.k8s.example.com", version: "v1.34.1", region: "ap-northeast-2", connected: true };
   const thresholds: ClusterSnapshot["thresholds"] = {
     node: { cpu: { warnPct: 70, critPct: 90 }, memory: { warnPct: 75, critPct: 90 }, requests: { warnPct: 85, critPct: null }, pods: { warnPct: 90, critPct: 100 } },
     pod: { memoryLimit: { warnPct: 80, critPct: 95 }, restarts1h: { warn: 1, crit: 3 } },
@@ -272,6 +491,7 @@ export function buildFixtures(now: number) {
     restartObservation: { observedSec: 1380, fullWindow: false },
     thresholds,
     nodes,
+    controlPlane,
     workloads,
     pods,
     events,
@@ -283,7 +503,7 @@ export function buildFixtures(now: number) {
     dataSource: "mock",
     generatedAt: iso(),
     cluster: clusterInfo,
-    overall: st("critical", [["POD_WAITING_CRASHLOOP", "파드 prod / api-7f9c8d6b5-x2kq9 CrashLoopBackOff"], ["NODE_NOT_READY", "노드 ip-10-0-12-34 NotReady 3분"]], 3 * MIN),
+    overall: st("critical", [["POD_WAITING_CRASHLOOP", "파드 prod / api-7f9c8d6b5-x2kq9 CrashLoopBackOff"], ["NODE_NOT_READY", "노드 i-0a7b8c9d0e1f2a3b4 NotReady 3분"]], 3 * MIN),
     areas,
     attention: {
       total: 3,
@@ -344,6 +564,8 @@ export function buildFixtures(now: number) {
       available: true,
       unavailableReason: null,
       updatedAt: iso(5_000),
+      // 워커 6대 기준 합계. 마스터는 controlPlane 블록으로 분리한다 (AC-KOPS12)
+      scope: { basis: "worker", workerNodeCount: workerNodes.length, controlPlaneNodeCount: masterNodes.length },
       cpu: { status: st("ok"), allocatableMillicores: 11580, usageMillicores: 3120, usagePct: 26.9, requestsMillicores: 8400, requestsPct: 72.5, limitsMillicores: 14200, limitsPct: 122.6 },
       memory: {
         status: st("warning", [["CLUSTER_MEMORY_USAGE", "메모리 사용률 78% (연속 3회)"]]),
@@ -355,10 +577,16 @@ export function buildFixtures(now: number) {
         limitsBytes: 51539607552,
         limitsPct: 108.3,
       },
+      controlPlane: {
+        available: true,
+        nodeCount: masterNodes.length,
+        cpu: { allocatableMillicores: 5790, usageMillicores: 1160, usagePct: 20, requestsMillicores: 1350, requestsPct: 23.3, limitsMillicores: 0, limitsPct: 0 },
+        memory: { allocatableBytes: 10952168448, usageBytes: 4200000000, usagePct: 38.3, requestsBytes: 3221225472, requestsPct: 29.4, limitsBytes: 0, limitsPct: 0 },
+      },
       thresholds: { cpu: { warnPct: 70, critPct: 90 }, memory: { warnPct: 75, critPct: 90 } },
       history: { source: "in_memory", maxRangeSec: 3600, stepSec: 15, observedSec: 3600 },
     },
-    clusterSeries: { stepSec: 15, source: "in_memory", observedSince: iso(H), points: clusterPoints },
+    clusterSeries:{ stepSec: 15, source: "in_memory", observedSince: iso(H), points: clusterPoints },
     nodes: nodes.filter((n) => n.usage).map((n) => ({ name: n.name, cpuMillicores: n.usage!.cpuMillicores, memoryBytes: n.usage!.memoryBytes, cpuPct: n.usage!.cpuPct, memoryPct: n.usage!.memoryPct })),
     pods: pods.filter((p) => p.usage).map((p) => ({ key: p.key, cpuMillicores: p.usage!.cpuMillicores, memoryBytes: p.usage!.memoryBytes, memoryLimitPct: p.memoryLimitPct, cpuRequestPct: p.cpuRequestPct })),
   };
@@ -555,14 +783,31 @@ export function buildFixtures(now: number) {
         { category: "ebs", label: "EBS", count: 9, usdPerHour: 0.124932, usdPerMonth: 91.2, sharePct: 11.3, unpricedCount: 0 },
         { category: "lb", label: "로드밸런서", count: 2, usdPerHour: 0.0504, usdPerMonth: 36.792, sharePct: 4.6, unpricedCount: 0 },
         { category: "ipv4", label: "퍼블릭 IPv4", count: 2, usdPerHour: 0.01, usdPerMonth: 7.3, sharePct: 0.9, unpricedCount: 0 },
-        { category: "eks", label: "EKS 컨트롤 플레인", count: 1, usdPerHour: 0.1, usdPerMonth: 73, sharePct: 9.1, unpricedCount: 0 },
+        {
+          category: "controlPlane",
+          label: "컨트롤 플레인",
+          count: 13,
+          usdPerHour: 0.216991,
+          usdPerMonth: 158.403,
+          sharePct: 19.6,
+          unpricedCount: 0,
+          byKind: [
+            { kind: "master_ec2", label: "마스터 EC2", count: 3, usdPerHour: 0.156, usdPerMonth: 113.88 },
+            { kind: "etcd_ebs", label: "etcd 볼륨", count: 6, usdPerHour: 0.014994, usdPerMonth: 10.944 },
+            { kind: "master_root_ebs", label: "마스터 루트 볼륨", count: 3, usdPerHour: 0.007497, usdPerMonth: 5.473 },
+            { kind: "api_lb", label: "API 서버 LB", count: 1, usdPerHour: 0.0225, usdPerMonth: 16.425, estimated: true },
+            { kind: "master_ipv4", label: "마스터 퍼블릭 IPv4", count: 0, usdPerHour: 0, usdPerMonth: 0 },
+          ],
+          apiLb: { state: "assumed", candidateCount: 1, text: "API 서버 LB로 추정 (1개)" },
+          notes: [{ code: "API_LB_ASSUMED", text: "API 서버 LB로 추정 (1개)" }],
+        },
       ],
       resources: {
         ec2: [
           { key: `node:${nodeNames[0]}`, nodeName: nodeNames[0], instanceId: "i-0a1b2c3d4e5f67890", nodeGroup: "batch", instanceType: "m6i.large", capacityType: "on_demand", zone: "ap-northeast-2a", architecture: "amd64", priced: true, unitPrice: { usdPerHour: 0.096, source: "pricing_api", asOf: iso(10 * H), zone: null }, spotFallback: false, usdPerHour: 0.096, usdPerMonth: 70.08, notes: [] },
           { key: `node:${nodeNames[4]}`, nodeName: nodeNames[4], instanceId: "i-0f9e8d7c6b5a43210", nodeGroup: "spot-workers", instanceType: "m6i.large", capacityType: "spot", zone: "ap-northeast-2c", architecture: "amd64", priced: true, unitPrice: { usdPerHour: 0.0342, source: "spot_price_history", asOf: iso(H), zone: "ap-northeast-2c" }, spotFallback: false, usdPerHour: 0.0342, usdPerMonth: 24.966, notes: [] },
           { key: `node:${nodeNames[5]}`, nodeName: nodeNames[5], instanceId: "i-01234abcd5678ef90", nodeGroup: "spot-workers", instanceType: "c7i.xlarge", capacityType: "spot", zone: "ap-northeast-2a", architecture: "amd64", priced: true, unitPrice: { usdPerHour: 0.2072, source: "on_demand_fallback", asOf: iso(10 * H), zone: null }, spotFallback: true, usdPerHour: 0.2072, usdPerMonth: 151.256, notes: [{ code: "SPOT_PRICE_FALLBACK", text: "스팟 시세 조회 실패 (온디맨드 기준 상한)" }] },
-          { key: "node:ip-10-0-50-2.ap-northeast-2.compute.internal", nodeName: "ip-10-0-50-2.ap-northeast-2.compute.internal", instanceId: "i-0aa11bb22cc33dd44", nodeGroup: "gpu", instanceType: "g6e.xlarge", capacityType: "on_demand", zone: "ap-northeast-2a", architecture: "amd64", priced: false, unitPrice: null, spotFallback: false, usdPerHour: null, usdPerMonth: null, notes: [{ code: "UNPRICED", text: "단가 없음 · 합계 제외" }] },
+          { key: "node:i-0aa11bb22cc33dd44", nodeName: "i-0aa11bb22cc33dd44", instanceId: "i-0aa11bb22cc33dd44", nodeGroup: "nodes-gpu", instanceType: "g6e.xlarge", capacityType: "on_demand", zone: "ap-northeast-2a", architecture: "amd64", priced: false, unitPrice: null, spotFallback: false, usdPerHour: null, usdPerMonth: null, notes: [{ code: "UNPRICED", text: "단가 없음 · 합계 제외" }] },
         ],
         ebs: [
           { key: "vol:vol-0123456789abcdef0", volumeId: "vol-0123456789abcdef0", volumeType: "gp2", sizeBytes: 53687091200, iops: 150, throughputMibps: null, attachment: { type: "pvc", namespace: "data", name: "data-postgres-0", nodeName: nodeNames[1] }, priced: true, unitPrice: { usdPerGbMonth: 0.114, usdPerIopsMonth: null, usdPerMibpsMonth: null, source: "pricing_api", asOf: iso(10 * H) }, usdPerHour: 0.007808, usdPerMonth: 5.7, notes: [] },
@@ -573,8 +818,73 @@ export function buildFixtures(now: number) {
         ipv4: [
           { key: `ipv4:${nodeNames[0]}`, nodeName: nodeNames[0], count: 1, priced: true, unitPrice: { usdPerHour: 0.005, source: "pricing_api", asOf: iso(10 * H) }, usdPerHour: 0.005, usdPerMonth: 3.65, notes: [] },
         ],
-        eks: [
-          { key: "eks:prod-eks", clusterName: "prod-eks", version: "1.30", supportTier: "standard", priced: true, unitPrice: { usdPerHour: 0.1, source: "pricing_api", asOf: iso(10 * H) }, usdPerHour: 0.1, usdPerMonth: 73, notes: [] },
+        // 한 배열에 여러 종류가 섞여 있고 `kind`로 구분한다 (계약 3.1)
+        controlPlane: [
+          ...masterNames.map((n, i) => ({
+            key: `cp:node:${n}`,
+            kind: "master_ec2" as const,
+            nodeName: n,
+            instanceId: `i-0cp${i}00000000000`,
+            nodeGroup: `control-plane-ap-northeast-2${"abc"[i]}`,
+            instanceType: "t3.medium",
+            capacityType: "on_demand" as const,
+            zone: `ap-northeast-2${"abc"[i]}`,
+            architecture: "amd64",
+            spotFallback: false,
+            priced: true,
+            unitPrice: { usdPerHour: 0.052, source: "pricing_api" as const, asOf: iso(10 * H), zone: null },
+            usdPerHour: 0.052,
+            usdPerMonth: 37.96,
+            notes: [],
+          })),
+          ...masterNames.flatMap((n, i) =>
+            (["main", "events"] as const).map((c, j) => ({
+              key: `cp:vol:vol-0etcd${i}${j}`,
+              kind: "etcd_ebs" as const,
+              volumeId: `vol-0etcd${i}${j}000000000`,
+              volumeType: "gp3",
+              sizeBytes: 21474836480,
+              iops: 3000,
+              throughputMibps: 125,
+              // 어느 쪽인지 확실히 알 수 없으면 null 이고 화면은 "etcd 볼륨"으로만 적는다
+              etcdCluster: (j === 0 ? c : null) as "main" | "events" | null,
+              nodeName: n,
+              priced: true,
+              unitPrice: { usdPerGbMonth: 0.0912, usdPerIopsMonth: null, usdPerMibpsMonth: null, source: "pricing_api" as const, asOf: iso(10 * H) },
+              usdPerHour: 0.002499,
+              usdPerMonth: 1.824,
+              notes: [],
+            })),
+          ),
+          ...masterNames.map((n, i) => ({
+            key: `cp:vol:vol-0root${i}`,
+            kind: "master_root_ebs" as const,
+            volumeId: `vol-0root${i}00000000000`,
+            volumeType: "gp3",
+            sizeBytes: 10737418240,
+            iops: 3000,
+            throughputMibps: 125,
+            nodeName: n,
+            priced: true,
+            unitPrice: { usdPerGbMonth: 0.0912, usdPerIopsMonth: null, usdPerMibpsMonth: null, source: "pricing_api" as const, asOf: iso(10 * H) },
+            usdPerHour: 0.002499,
+            usdPerMonth: 1.824,
+            notes: [],
+          })),
+          {
+            key: "cp:lb:a1b2c3d4e5f6789012345678",
+            kind: "api_lb" as const,
+            name: "a1b2c3d4e5f6789012345678",
+            lbType: "nlb" as const,
+            attachedTo: [],
+            healthyTargets: 3,
+            identification: { confidence: "assumed" as const, matchedBy: ["cluster_tag", "no_service_or_ingress_ownership"], candidateCount: 1 },
+            priced: true,
+            unitPrice: { usdPerHour: 0.0225, source: "pricing_api" as const, asOf: iso(10 * H) },
+            usdPerHour: 0.0225,
+            usdPerMonth: 16.425,
+            notes: [{ code: "API_LB_ASSUMED", text: "API 서버 LB로 추정" }],
+          },
         ],
       },
       pricing: { source: "pricing_api", fetchedAt: iso(10 * H), nextRefreshAt: iso(-14 * H), cacheUsed: false, cacheFetchedAt: null },
@@ -595,7 +905,7 @@ export function buildFixtures(now: number) {
       ],
       pinnedRows: [
         { key: "unallocated", label: "미할당(유휴)", usdPerHour: 0.3093, usdPerMonth: 225.789, sharePct: 28, breakdown: { nodeUsdPerHour: 0.3093, storageUsdPerHour: 0, lbUsdPerHour: 0 } },
-        { key: "shared_cluster", label: "공용(클러스터)", usdPerHour: 0.1266, usdPerMonth: 92.418, sharePct: 11.5, breakdown: { nodeUsdPerHour: 0, storageUsdPerHour: 0.0166, lbUsdPerHour: 0, eksUsdPerHour: 0.1, ipv4UsdPerHour: 0.01 } },
+        { key: "shared_cluster", label: "공용(클러스터)", usdPerHour: 0.1266, usdPerMonth: 92.418, sharePct: 11.5, breakdown: { nodeUsdPerHour: 0, storageUsdPerHour: 0.0166, lbUsdPerHour: 0, controlPlaneUsdPerHour: 0.216991, ipv4UsdPerHour: 0.01 } },
         { key: "shared", label: "공용", usdPerHour: 0.0253, usdPerMonth: 18.469, sharePct: 2.3, breakdown: { nodeUsdPerHour: 0, storageUsdPerHour: 0, lbUsdPerHour: 0.0253 } },
       ],
       hiddenSystem: null,
@@ -670,7 +980,7 @@ export function buildFixtures(now: number) {
           kind: "estimated",
           asOf: iso(MIN),
           causes: [
-            { change: "added", category: "ec2", key: "node:ip-10-0-60-1", text: "EC2 노드 +3대 (m6i.large 온디맨드)", deltaUsdPerHour: 0.288 },
+            { change: "added", category: "ec2", key: "node:i-0bb22cc33dd44ee55", text: "EC2 노드 +3대 (m6i.large 온디맨드)", deltaUsdPerHour: 0.288 },
             { change: "removed", category: "lb", key: "lb:k8s-old-web-1a2b3c", text: "로드밸런서 삭제 (ALB)", deltaUsdPerHour: -0.0252 },
           ],
           causesBaselineAt: iso(3 * DAY),
@@ -1028,6 +1338,7 @@ export function buildFixtures(now: number) {
     hello,
     overview,
     clusterSnapshot,
+    controlPlane,
     metricsSnapshot,
     nodeSeries,
     db,

@@ -44,20 +44,81 @@
   font: var(--font-h3);
 }
 
+/*
+ * shell.md 2.1. 폭이 줄어드는 유일한 블록이다.
+ * `container-type: inline-size` 로 **뷰포트가 아니라 이 블록에 남는 폭**을 기준으로
+ * 리전 → 버전 → (이름만) → circle-help 순서로 버린다. 버린 값은 툴팁에 남는다.
+ */
 .clusterInfo {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
+  gap: var(--spacing-1);
+  container-type: inline-size;
 }
 
 .clusterText {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
   font: var(--font-body);
   color: var(--color-text-secondary);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   font-variant-numeric: var(--font-numeric);
+}
+
+/* 눈으로 읽는 줄(낭독은 위 sr-only 한 문장이 대신한다) */
+.clusterVisual {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* 이름 최대 폭: ≥1440 240 / 1280~1439 200 / 1024~1279 160px (shell.md 2.1) */
+.clusterText .clusterName {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(240px, 100%);
+}
+
+.clusterVersion,
+.clusterRegion {
+  flex: 0 0 auto;
+  white-space: pre;
+}
+
+/* 좁아서 문구를 못 보일 때만 나오는 대체 단서 */
+.clusterFallback {
+  display: none;
+  flex: 0 0 auto;
+}
+
+@container (max-width: 319px) {
+  .clusterRegion {
+    display: none;
+  }
+}
+
+@container (max-width: 239px) {
+  .clusterVersion {
+    display: none;
+  }
+}
+
+@container (max-width: 159px) {
+  .clusterText,
+  .clusterNone {
+    display: none;
+  }
+
+  .clusterFallback {
+    display: inline-flex;
+  }
 }
 
 .clusterNone {
@@ -77,6 +138,18 @@
   margin-left: auto;
 }
 
+@media (max-width: 1439px) {
+  .clusterText .clusterName {
+    max-width: min(200px, 100%);
+  }
+}
+
+@media (max-width: 1279px) {
+  .clusterText .clusterName {
+    max-width: min(160px, 100%);
+  }
+}
+
 @media (max-width: 1023px) {
   .logo {
     width: auto;
@@ -89,8 +162,13 @@
     padding: 0 var(--spacing-3);
   }
 
+  /*
+   * 블록을 통째로 숨기지 않는다. 폭을 버튼 하나(32px)로 줄이면 위 @container 규칙이
+   * 자동으로 문구를 접고 circle-help 만 남긴다 — 작은 화면에서도 어느 클러스터인지 알 수 있다.
+   */
+  /* container-type 때문에 내용이 폭을 만들지 못하므로 버튼 크기(24px)를 명시한다 */
   .clusterInfo {
-    display: none;
+    flex: 0 0 var(--size-badge-md);
   }
 
   .topRight {
@@ -99,6 +177,11 @@
 }
 
 @media (max-width: 479px) {
+  /* 360px 에서 상단바가 넘치지 않게 좌우 여백을 한 단계 줄인다(클러스터 대체 버튼 자리를 만든다) */
+  .topBar {
+    padding: 0 var(--spacing-2);
+  }
+
   .logoText {
     position: absolute;
     width: 1px;
@@ -392,8 +475,25 @@
 }
 
 /* ───── SideNav ───── */
+/*
+ * 세로 3단 (shell.md 3.3, 2026-09-25 항목 9 → 12개):
+ *   1단 목록(스크롤) / 2단 구분선(스크롤이 생길 때만) / 3단 하단 고정(`설정` + `메뉴 접기`).
+ * 펼침 613px · 접힘 584px 이라 뷰포트 669px 미만(1366×768 노트북)에서 목록이 넘친다.
+ */
 .nav {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.navScroll {
+  flex: 1 1 auto;
+  min-height: 0;
   padding: var(--spacing-3) var(--spacing-2) 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* 목록 끝에서 스크롤이 본문으로 넘어가지 않게. 스크롤바 폭은 브라우저 기본(좁히면 잡기 어렵다) */
+  overscroll-behavior: contain;
 }
 
 .navList {
@@ -403,7 +503,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-0-5);
-  flex: 1 1 auto;
 }
 
 .navGroup {
@@ -539,6 +638,34 @@
   color: var(--color-status-stale-fg);
 }
 
+/*
+ * 접힘(64px)의 숫자 배지 (shell.md 3.2, 2026-09-25): 아이콘 오른쪽 위 모서리에 걸치는 pill.
+ * 높이·최소 폭 14px, 패딩 0 4px, 1.5px bg.surface 테두리(아이콘과 겹치는 경계를 끊는다),
+ * 3자리 이상은 `99+`(최대 폭 26px — 48px 항목 상자 안에 들어간다).
+ * **상태 점이 없는 항목만** 그린다(알림). 펼침에서는 navStatus 안의 .navCount 가 대신한다.
+ */
+.navDotCount {
+  display: none;
+  position: absolute;
+  top: calc(-1 * var(--spacing-1));
+  /* 오른쪽 기준으로 붙인다 — 99+ 로 넓어져도 48px 항목 상자 밖으로 나가지 않는다 */
+  right: calc(-1 * var(--spacing-2));
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  height: calc(var(--spacing-3) + var(--spacing-0-5));
+  min-width: calc(var(--spacing-3) + var(--spacing-0-5));
+  max-width: calc(var(--spacing-6) + var(--spacing-0-5));
+  padding: 0 var(--spacing-1);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 0 var(--chart-stroke-width-multi) var(--color-bg-surface);
+  font: var(--font-micro);
+  font-weight: var(--font-caption-strong-weight);
+  font-variant-numeric: var(--font-numeric);
+  line-height: 1;
+  overflow: hidden;
+}
+
 /* 접힘 상태의 점: 아이콘 오른쪽 위 8px + 1.5px bg.surface 테두리 */
 .navDot {
   display: none;
@@ -567,13 +694,27 @@
   background: var(--color-status-stale-solid);
 }
 
+/* 3단: 스크롤 밖. `설정`과 `메뉴 접기`는 목록이 아무리 길어져도 언제나 보인다 */
 .navFooter {
-  position: sticky;
-  bottom: 0;
-  margin-top: var(--spacing-3);
-  padding: var(--spacing-2) 0;
-  border-top: var(--border-width-thin) solid var(--color-border-subtle);
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-0-5);
+  padding: 0 var(--spacing-2) var(--spacing-3);
   background: var(--color-bg-surface);
+}
+
+/* 2단 구분선: 좌우 12px 여백(스크롤 영역 패딩 8 + 4). **스크롤이 실제로 생길 때만** 그린다 */
+.navFooter[data-scrollable="true"]::before {
+  content: "";
+  display: block;
+  height: var(--border-width-thin);
+  margin: 0 var(--spacing-1) var(--spacing-2);
+  background: var(--color-border-subtle);
+}
+
+.navFooter[data-scrollable="false"] {
+  padding-top: var(--spacing-2);
 }
 
 /* 접힘(64px): 48×40 항목, 아이콘 가운데, 라벨은 툴팁 */
@@ -596,6 +737,10 @@
 
 :global(.app-nav[data-collapsed="true"]) .navDot {
   display: block;
+}
+
+:global(.app-nav[data-collapsed="true"]) .navDotCount {
+  display: inline-flex;
 }
 
 :global(.app-nav[data-collapsed="true"]) .navGroup {
@@ -630,7 +775,8 @@
     clip-path: none;
   }
 
-  :global(.app-nav[data-collapsed="true"]) .navDot {
+  :global(.app-nav[data-collapsed="true"]) .navDot,
+  :global(.app-nav[data-collapsed="true"]) .navDotCount {
     display: none;
   }
 
@@ -645,7 +791,8 @@
     background: none;
   }
 
-  .navFooter {
+  /* 드로어에서는 접기가 뜻이 없다. `설정`은 남긴다(하단 고정 영역 자체를 숨기지 않는다) */
+  .navCollapseButton {
     display: none;
   }
 }

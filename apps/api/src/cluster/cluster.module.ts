@@ -25,6 +25,8 @@ import { MetricsStore } from './state/metrics-store';
  * - export `ClusterStateService`: 비용·어드바이저·DB 모듈이 현재 노드/파드 캐시를 읽는다.
  * - export `KubeWatcherService`: health가 informer 상태를 본다.
  * - export `ClusterStore`·`KubeClientService`: k8s-snapshot 드리프트가 informer 캐시·mock 인벤토리·컨텍스트 이름을 읽는다 (읽기 전용).
+ * - export `OverviewService`: alerts 엔진이 `areas.*`·`cost.status`를 **읽기만** 한다
+ *   (알림은 상태를 다시 판단하지 않고 이미 계산된 StatusInfo의 전이만 본다).
  */
 @Module({
   imports: [DiscoveryModule],
@@ -51,6 +53,7 @@ import { MetricsStore } from './state/metrics-store';
     KubeWatcherService,
     ClusterStore,
     KubeClientService,
+    OverviewService,
   ],
 })
 export class ClusterModule {}

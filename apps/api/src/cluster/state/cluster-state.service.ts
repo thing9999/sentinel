@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { merge, Observable, Subject, Subscription } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
+import { LogLinkPolicy } from '../../common/log-link-policy.service';
 import { SettingsService } from '../../common/settings.service';
 import {
   SourceRegistry,
@@ -14,7 +15,7 @@ import {
 } from '../../common/source-registry.service';
 import { StatusChangeTracker } from '../../common/status';
 import type { EnvironmentVariables } from '../../config/env.validation';
-import { podKey, type RawPod } from '../model';
+import { podKey, type NodeRole, type RawPod } from '../model';
 import type { ClusterInfo, DbAreaProvider } from '../types';
 import { ClusterStore } from './cluster-store';
 import {
@@ -118,6 +119,7 @@ export interface ClusterInventoryView {
     capacityType: 'on_demand' | 'spot' | null;
     zone: string | null;
     nodeGroup: string | null;
+    role: NodeRole;
     architecture: string | null;
     allocatable: { cpuMillicores: number; memoryBytes: number };
   }[];
@@ -175,7 +177,10 @@ export class ClusterStateService implements OnModuleInit, OnModuleDestroy {
   private debounceTimer: NodeJS.Timeout | null = null;
   private tickTimer: NodeJS.Timeout | null = null;
   private sub: Subscription | null = null;
+  private logLinkSub: Subscription | null = null;
   private clusterNameOverride: string | null;
+  /** env CONTROL_PLANE_HA_EXPECTED (기본 true) */
+  readonly controlPlaneHaExpected: boolean;
 
   constructor(
     readonly store: ClusterStore,
@@ -183,6 +188,7 @@ export class ClusterStateService implements OnModuleInit, OnModuleDestroy {
     private readonly registry: SourceRegistry,
     private readonly settings: SettingsService,
     config: ConfigService<EnvironmentVariables, true>,
+    private readonly logLinks: LogLinkPolicy,
   ) {
     this.systemNamespaces = new Set(
       config
@@ -195,7 +201,10 @@ export class ClusterStateService implements OnModuleInit, OnModuleDestroy {
       infer: true,
     });
     this.clusterNameOverride =
-      config.get('EKS_CLUSTER_NAME', { infer: true }) ?? null;
+      config.get('K8S_CLUSTER_NAME', { infer: true }) ?? null;
+    this.controlPlaneHaExpected = config.get('CONTROL_PLANE_HA_EXPECTED', {
+      infer: true,
+    });
   }
 
   onModuleInit(): void {
@@ -209,6 +218,11 @@ export class ClusterStateService implements OnModuleInit, OnModuleDestroy {
         map(() => undefined),
       ),
     ).subscribe(() => this.schedule());
+    // 로그 링크 가능 여부가 바뀌면(mock `logs=disabled` 전환) 링크를 다시 만들어 스냅샷을 다시 보낸다.
+    // 행마다 upsert를 쏟는 것보다 스냅샷 한 번이 화면에 정직하다
+    this.logLinkSub = this.logLinks.changes$.subscribe(() =>
+      this.requestResync(),
+    );
     this.tickTimer = setInterval(() => this.recompute(), 15_000);
     this.tickTimer.unref();
     void this.settings.get('cluster.thresholds').then(() => this.schedule());
@@ -216,6 +230,7 @@ export class ClusterStateService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy(): void {
     this.sub?.unsubscribe();
+    this.logLinkSub?.unsubscribe();
     if (this.tickTimer) clearInterval(this.tickTimer);
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
   }
@@ -254,7 +269,11 @@ export class ClusterStateService implements OnModuleInit, OnModuleDestroy {
         metrics: this.metrics,
         t: this.thresholds(),
         systemNamespaces: this.systemNamespaces,
-        kube: { state: kube.state, lastSuccessAt: kube.lastSuccessAt },
+        kube: {
+          state: kube.state,
+          lastSuccessAt: kube.lastSuccessAt,
+          errorCode: kube.error?.code ?? null,
+        },
         metricsSource: {
           state: metricsSrc.state,
           lastSuccessAt: metricsSrc.lastSuccessAt,
@@ -264,6 +283,9 @@ export class ClusterStateService implements OnModuleInit, OnModuleDestroy {
         pvcUsageProm: this.pvcUsageProm,
         clusterName: this.clusterInfo().name,
         metricsIntervalSec: this.metricsIntervalSec,
+        controlPlaneHaExpected: this.controlPlaneHaExpected,
+        // 링크는 평가 단계에서 채운다 — REST·SSE가 같은 항목을 쓴다 (logs.md 11.4)
+        logLinks: this.logLinks.value(),
       });
     } catch (err) {
       this.logger.error(
@@ -488,6 +510,7 @@ export class ClusterStateService implements OnModuleInit, OnModuleDestroy {
         capacityType: n.capacityType,
         zone: n.zone,
         nodeGroup: n.nodeGroup,
+        role: n.role,
         architecture: n.architecture,
         allocatable: {
           cpuMillicores: n.allocatable.cpuMillicores,

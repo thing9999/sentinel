@@ -28,7 +28,7 @@ describe('CostModule HTTP (mock)', () => {
       dataSource: 'mock',
       awsRegion: null,
       awsProfile: null,
-      clusterName: 'prod-eks',
+      clusterName: 'prod.k8s.example.com',
       env: {},
       timers: false,
     };
@@ -86,13 +86,25 @@ describe('CostModule HTTP (mock)', () => {
 
   it('mock: 비용 추정의 노드·배분 파드가 클러스터 화면(/api/cluster)과 같다', async () => {
     const http = app.getHttpServer();
-    const nodes = (await request(http).get('/api/cluster/nodes').expect(200))
-      .body.items as { name: string }[];
+    // 노드 목록 기본값은 워커만이다 (AC-KOPS11). 비용 EC2 행은 마스터도 포함하므로 role=all로 맞춘다
+    const nodes = (
+      await request(http).get('/api/cluster/nodes?role=all').expect(200)
+    ).body.items as { name: string }[];
     const est = (await request(http).get('/api/cost/estimate').expect(200))
-      .body as { resources: { ec2: { nodeName: string | null }[] } };
+      .body as {
+      resources: {
+        ec2: { nodeName: string | null }[];
+        controlPlane: { kind: string; nodeName?: string | null }[];
+      };
+    };
     const clusterNames = nodes.map((n) => n.name).sort();
-    const costNames = est.resources.ec2
-      .map((r) => r.nodeName)
+    // 워커는 ec2, 마스터는 controlPlane(master_ec2)에 있다 (AC-KOPS29)
+    const costNames = [
+      ...est.resources.ec2.map((r) => r.nodeName),
+      ...est.resources.controlPlane
+        .filter((r) => r.kind === 'master_ec2')
+        .map((r) => r.nodeName ?? null),
+    ]
       .filter((n): n is string => n !== null)
       .sort();
     expect(clusterNames.length).toBeGreaterThan(0);

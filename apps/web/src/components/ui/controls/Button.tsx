@@ -17,7 +17,10 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
   icon?: IconName;
   loading?: boolean;
   disabled?: boolean;
-  /** 비활성 이유: 툴팁 + aria-describedby */
+  /**
+   * 비활성 이유: 툴팁 + aria-describedby. **버튼 이름에는 들어가지 않는다**(이름은 `children` 만, 사유는 설명으로 한 번).
+   * `disabled` 와 함께 줄 때만 쓰인다.
+   */
   disabledReason?: string;
   fullWidth?: boolean;
   children?: ReactNode;
@@ -81,11 +84,6 @@ export function Button({
         <Icon name={icon} size={iconSize} className={styles.btnIcon} />
       ) : null}
       {children !== undefined && children !== null ? <span className={styles.btnLabel}>{children}</span> : null}
-      {disabled && disabledReason ? (
-        <span id={reasonId} className="sr-only">
-          {disabledReason}
-        </span>
-      ) : null}
     </button>
   );
 
@@ -93,6 +91,15 @@ export function Button({
     return (
       <Tooltip content={disabledReason} className={cx(fullWidth && styles.fullWidth)}>
         {button}
+        {/*
+          * 사유는 **설명(aria-describedby)으로만** 읽힌다(2026-09-25 고침). 종전에는 이 문장이 버튼 **안**의 sr-only 라
+          * 버튼 이름(`저장 대시보드 DB에…`)에도 들어가 스크린리더가 두 번 읽었다.
+          * 버튼 밖에 두고 `hidden` 으로 숨긴다 — aria-describedby 가 직접 가리키는 숨은 요소의 글자는 설명 계산에 들어가고
+          * (accname 규칙), 읽기 모드에서 따로 읽히는 떠돌이 문장도 되지 않는다.
+          */}
+        <span id={reasonId} hidden>
+          {disabledReason}
+        </span>
       </Tooltip>
     );
   }

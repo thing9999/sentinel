@@ -188,7 +188,7 @@ function NotesForm({ snapshotId, detail, limits, onClose, onSaved }: NotesDialog
           onOverflow={() => setLabelError(`라벨은 ${labelMax}자까지 입력할 수 있습니다`)}
           error={labelError}
           invalid={secretLabel}
-          placeholder="예: EKS 1.30 업그레이드 전"
+          placeholder="예: kOps 1.31 업그레이드 전"
           autoComplete="off"
           data-autofocus
         />

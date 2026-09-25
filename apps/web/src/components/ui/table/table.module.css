@@ -334,11 +334,16 @@
   text-decoration: underline;
 }
 
+/*
+ * overflow: hidden 은 마지막 안전장치다. 남는 폭이 보존 글자(앞 12 + 뒤 8)보다 좁아도
+ * 글자가 상자 밖으로 새어 나가 옆 내용과 겹치지 않는다(frontend 보고 2026-09-24, 360px 재현).
+ */
 .rnVisual {
   display: inline-flex;
   min-width: 0;
   max-width: 100%;
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .rnNamespace {
@@ -347,6 +352,12 @@
   white-space: pre;
 }
 
+/*
+ * 앞 토막(= 보존할 끝 글자를 뺀 나머지). 줄어들 때 **끝에서** 말줄임되므로
+ * 잘림은 이름 가운데에서 일어나고 앞 글자는 폭이 허락하는 만큼 그대로 남는다.
+ * 앞 글자를 따로 떼어 `flex-shrink: 0` 으로 묶지 않는 이유: 두 토막이 함께 줄면
+ * 말줄임이 두 번(`prod-ap-n… heast… mple.com`) 나온다(2026-09-24 Edge 실측).
+ */
 .rnHead {
   min-width: 0;
   flex: 0 1 auto;
@@ -354,27 +365,86 @@
   text-overflow: ellipsis;
 }
 
+/* 클러스터 이름은 body 14/20 sans (상단바의 다른 글자와 줄맞춤이 깨지지 않게) */
+.rnSans {
+  font: var(--font-body);
+}
+
+.rnTooltipName {
+  display: block;
+  font: var(--font-resource-name);
+  word-break: break-all;
+}
+
+.rnTooltipExtra {
+  display: block;
+  margin-top: var(--spacing-1);
+  font: var(--font-caption);
+}
+
 .rnTail {
   flex-shrink: 0;
 }
 
-/* 복사 버튼: 이름 또는 행 hover·포커스 때만 보인다 */
-.rnCopy {
+/*
+ * 이름 칸의 행동(복사 버튼 · 로그 링크, components.md 7.2·21.10) — **보이는 조건은 한 규칙**이다.
+ * - 평소 `opacity: 0` 으로만 숨긴다: 자리는 늘 차지하고(나타날 때 이름 말줄임이 흔들리지 않게),
+ *   스크린리더에는 항상 있다. `visibility`·`display` 로 숨기지 않는다.
+ * - 보임: 이름 hover·포커스, 행 hover, **행 포커스**(`tr:focus-within`·`tr:focus-visible` — 키보드로 행에 왔을 때
+ *   무엇을 할 수 있는지 보이게. 2026-09-25 복사 버튼에도 같이 넣었다).
+ * - 터치(`hover: none`): 항상 보인다(hover 가 없으니 숨기면 찾을 길이 없다).
+ */
+.rnAction {
   display: inline-flex;
   flex-shrink: 0;
   opacity: 0;
 }
 
-.rn:hover .rnCopy,
-.rn:focus-within .rnCopy,
-:global(tr:hover) .rnCopy {
+.rn:hover .rnAction,
+.rn:focus-within .rnAction,
+:global(tr:hover) .rnAction,
+:global(tr:focus-within) .rnAction,
+:global(tr:focus-visible) .rnAction {
   opacity: 1;
 }
 
 @media (hover: none) {
-  .rnCopy {
+  .rnAction {
     opacity: 1;
   }
+}
+
+/* 복사 버튼 자리(모양은 CopyButton sm). 보이는 조건은 위 .rnAction */
+.rnCopy {
+  align-items: center;
+}
+
+/*
+ * 로그 아이콘 링크(components.md 21.10): 24 × 24px, radius 6px, `scroll-text` 14px `text.secondary`.
+ * hover 배경 `bg.hover`·아이콘 `text.primary`, 포커스는 전역 focus ring. 클릭 영역 32 × 32px(바깥 4px 투명).
+ * 간격은 `.rn` 의 gap 4px(복사 버튼 다음).
+ */
+.rnLogLink {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-badge-md);
+  height: var(--size-badge-md);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+
+.rnLogLink::before {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--spacing-1));
+}
+
+.rnLogLink:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
 }
 
 /* ───── KeyValueList ───── */

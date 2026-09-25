@@ -319,9 +319,16 @@ describe("TypeToConfirmDialog (11.5)", () => {
     expect(input.getAttribute("autocomplete")).toBe("off");
     expect(input.getAttribute("spellcheck")).toBe("false");
     expect(document.activeElement).toBe(input);
-    const btn = screen.getByRole("button", { name: /휴지통으로 이동/ });
+    // 이름은 버튼 문구만, 비활성 사유는 설명(aria-describedby)으로 한 번 — 2026-09-25 Button 이중 낭독 고침
+    const btn = screen.getByRole("button", { name: "휴지통으로 이동" });
     expect(btn.getAttribute("aria-disabled")).toBe("true");
-    expect(btn.textContent).toContain("스냅샷 ID를 입력하세요");
+    expect(btn.textContent).not.toContain("스냅샷 ID를 입력하세요");
+    const description = btn
+      .getAttribute("aria-describedby")!
+      .split(" ")
+      .map((id) => document.getElementById(id)?.textContent ?? "")
+      .join(" ");
+    expect(description).toContain("스냅샷 ID를 입력하세요");
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.click(btn);
     expect(onConfirm).not.toHaveBeenCalled();

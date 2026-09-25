@@ -1,0 +1,123 @@
+/*
+ * 알림 센터 화면 배치 (docs/design/alerts.md 3.1·8절). 색은 토큰 변수만 쓰고 모양은 components/ui 가 맡는다.
+ * 항목·정지 구간 줄의 모양은 퍼블리셔의 `AlertItem`·`AlertGapRow` 안에 있다 — 여기서 덮어쓰지 않는다.
+ */
+
+/* ───────── 요약 줄 (32px, 좁은 폭 2줄) ───────── */
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-height: 32px;
+  min-width: 0;
+}
+
+.unread {
+  font: var(--font-body-strong);
+  color: var(--color-accent-default);
+}
+
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+/* 0인 항목은 버튼이 아니다(디자인 3.1) */
+.zero {
+  font: var(--font-caption);
+  color: var(--color-text-disabled);
+  font-variant-numeric: tabular-nums;
+}
+
+.updated {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-left: auto;
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ───────── 목록 ───────── */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: var(--border-width-thin) solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.empty {
+  list-style: none;
+  padding: 0;
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+}
+
+.note {
+  margin: 0;
+  text-align: center;
+  color: var(--color-text-tertiary);
+}
+
+/* ───────── 확장 영역 ───────── */
+.transition {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin: 0;
+}
+
+.sublist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.timelineRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-height: 24px;
+  font-variant-numeric: tabular-nums;
+}
+
+.target {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.restartCounts {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  margin: 0;
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 1023px) {
+  .updated {
+    margin-left: 0;
+    width: 100%;
+  }
+}

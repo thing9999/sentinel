@@ -36,6 +36,9 @@ export const STREAM_TOPICS = [
   'aws-snapshots',
   'k8s-snapshots',
   'snapshot-menu',
+  // 알림은 **기존 토픽 체계에 1개 추가**다 (새 스트림을 만들지 않는다).
+  // 로그는 여기에 없다 — 전용 연결이고 `?topics=logs`는 400이다 (AC-LOG22).
+  'alerts',
 ] as const;
 export type StreamTopic = (typeof STREAM_TOPICS)[number];
 

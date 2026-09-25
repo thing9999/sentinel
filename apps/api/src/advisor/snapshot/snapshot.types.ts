@@ -10,6 +10,13 @@ export interface UsagePct {
   requestsPct: number;
 }
 
+export type ControlPlaneComponentKind =
+  | 'kube-apiserver'
+  | 'kube-controller-manager'
+  | 'kube-scheduler'
+  | 'etcd-manager-main'
+  | 'etcd-manager-events';
+
 export interface SnapshotNodeGroup {
   name: string;
   instanceTypes: { type: string; count: number }[];
@@ -26,6 +33,8 @@ export interface SnapshotNodeGroup {
 export interface SnapshotNode {
   name: string;
   nodeGroup: string | null;
+  /** 워커 / 컨트롤 플레인(마스터). 마스터는 워커 기준 규칙의 대상이 아니다 */
+  role: 'worker' | 'control_plane';
   instanceType: string | null;
   architecture: string | null;
   capacityType: 'on_demand' | 'spot' | null;
@@ -100,6 +109,14 @@ export interface SnapshotUnattachedVolume {
   usdPerMonth: number | null;
 }
 
+export interface SnapshotControlPlaneVolume {
+  volumeRef: string; // 가명 vol-<n>
+  kind: 'etcd' | 'master_root';
+  volumeType: string;
+  capacityBytes: number;
+  usdPerMonth: number | null;
+}
+
 export interface SnapshotLoadBalancer {
   ref: string;
   type: 'alb' | 'nlb' | 'clb';
@@ -141,7 +158,7 @@ export interface SnapshotCost {
   rate: {
     totalUsdPerHour: number | null;
     byCategory: {
-      category: 'ec2' | 'ebs' | 'lb' | 'ipv4' | 'eks';
+      category: 'ec2' | 'ebs' | 'lb' | 'ipv4' | 'controlPlane';
       usdPerHour: number;
     }[];
     byNodeGroup: {
@@ -194,13 +211,38 @@ export interface SnapshotPrecheck {
   savings: { monthlyUsd: number; formula: string } | null;
 }
 
+export interface SnapshotControlPlane {
+  masters: {
+    readyCount: number;
+    instanceTypes: { type: string; count: number }[];
+    zones: { zone: string; count: number }[];
+    capacityType: 'on_demand' | 'spot' | 'mixed' | null;
+    cpu: UsagePct;
+    memory: UsagePct;
+  };
+  /** 필수 5종 요약. 기타 구성요소는 넣지 않는다 */
+  components: {
+    kind: ControlPlaneComponentKind;
+    readyCount: number;
+    expectedCount: number;
+    restarts24h: number;
+  }[];
+  quorumState: 'ok' | 'at_risk' | 'lost' | 'unknown';
+  haExpected: boolean;
+  notReporting: number;
+}
+
 export interface SnapshotCluster {
-  platform: 'eks';
+  platform: 'kops';
   version: string;
   region: string | null;
-  supportTier: 'standard' | 'extended' | null;
-  nodeCount: number;
+  /** (구 nodeCount) 마스터를 포함하지 않는다 */
+  workerCount: number;
+  /** 마스터 노드 수. 라벨 노드가 0대면 0 */
+  controlPlaneCount: number;
   namespaceCount: number;
+  /** 마스터가 0대면 null */
+  controlPlane: SnapshotControlPlane | null;
 }
 
 export interface AdvisorSnapshotV1 {
@@ -220,6 +262,11 @@ export interface AdvisorSnapshotV1 {
   workloads: SnapshotWorkload[];
   storage: SnapshotStorage[];
   unattachedVolumes: SnapshotUnattachedVolume[];
+  /**
+   * 컨트롤 플레인 볼륨(etcd main/events, 마스터 루트). PVC가 아니라 `storage[]`에 없다.
+   * R-GP2가 etcd 볼륨을 대상에 포함시키려면 필요하다 (AC-KOPS42. 전용 규칙은 만들지 않는다)
+   */
+  controlPlaneVolumes: SnapshotControlPlaneVolume[];
   loadBalancers: SnapshotLoadBalancer[];
   events: {
     windowSec: 3600;
@@ -254,6 +301,7 @@ export interface ClusterContribution {
 export interface CostContribution {
   cost?: SnapshotCost | null;
   unattachedVolumes?: SnapshotUnattachedVolume[];
+  controlPlaneVolumes?: SnapshotControlPlaneVolume[];
   loadBalancers?: SnapshotLoadBalancer[];
 }
 

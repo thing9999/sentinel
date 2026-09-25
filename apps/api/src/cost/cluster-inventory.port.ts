@@ -20,12 +20,17 @@ export interface InventoryNode {
   providerId: string | null;
   /** 레이블 node.kubernetes.io/instance-type */
   instanceType: string | null;
-  /** eks.amazonaws.com/capacityType 또는 karpenter.sh/capacity-type 해석값 */
+  /** 노드 라벨 해석값 (kOps는 붙이지 않으므로 보통 null. EC2 InstanceLifecycle이 1순위) */
   capacityType: 'on_demand' | 'spot' | null;
   /** topology.kubernetes.io/zone */
   zone: string | null;
-  /** eks.amazonaws.com/nodegroup 또는 karpenter.sh/nodepool 등 해석값 */
+  /** kOps InstanceGroup 이름 (라벨 kops.k8s.io/instancegroup) */
   nodeGroup: string | null;
+  /**
+   * 워커 / 컨트롤 플레인(마스터). 마스터 비용은 파드에 배분하지 않고
+   * `공용(클러스터)` 행으로 간다 (kops-support 3.5.6, AC-KOPS15).
+   */
+  role: 'worker' | 'control_plane';
   /** kubernetes.io/arch */
   architecture: string | null;
   /** status.allocatable (배분 비율의 분모) */
@@ -69,7 +74,7 @@ export interface ClusterInventorySnapshot {
   updatedAt: Date | null;
   /**
    * (선택) 쿠버네티스 API 서버 버전 `major.minor`(예: "1.34"). 모르면 null.
-   * EKS 컨트롤 플레인 지원 등급(표준/확장)의 기준. live에서 eks:DescribeCluster 값이 있으면 그 값이 우선.
+   * 클러스터 버전의 **유일한 출처**다 (kOps에는 AWS 쪽 클러스터 객체가 없다, AC-KOPS08).
    */
   kubernetesVersion?: string | null;
   nodes: InventoryNode[];
@@ -104,7 +109,7 @@ export class NotConfiguredClusterInventory implements ClusterInventoryPort {
   }
 }
 
-/** "v1.34.2-eks-abc" · "1.34" → "1.34". 형식이 다르면 null */
+/** "v1.34.2" · "1.34" → "1.34". 형식이 다르면 null */
 export function k8sMinorVersion(v: string | null | undefined): string | null {
   if (!v) return null;
   const m = /^v?(\d+)\.(\d+)/.exec(v.trim());

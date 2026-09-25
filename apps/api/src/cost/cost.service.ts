@@ -39,7 +39,6 @@ import {
 } from './aws/aws-gateway';
 import {
   CLUSTER_INVENTORY_PORT,
-  k8sMinorVersion,
   type ClusterInventoryPort,
   type ClusterInventorySnapshot,
 } from './cluster-inventory.port';
@@ -73,11 +72,7 @@ import {
   presentAllocation,
   type AllocationSort,
 } from './estimate/allocation';
-import {
-  eksSupportTier,
-  gravitonEquivalent,
-  smallerSize,
-} from './estimate/eks-support';
+import { gravitonEquivalent, smallerSize } from './estimate/instance-types';
 import {
   computeEstimate,
   emptyPriceBook,
@@ -119,6 +114,7 @@ import {
   type CostSettings,
 } from './settings/cost-settings.service';
 import {
+  baselineSince,
   computeRateBaseline,
   computeSpikeCauses,
   estimateMonthEnd,
@@ -177,6 +173,12 @@ const emptyEstimate = (
   prices: null,
   intervalSec,
 });
+
+/** live인데 K8S_CLUSTER_NAME이 비어 있음 — 리소스를 어느 클러스터 것인지 고를 수 없다 (AC-KOPS33) */
+const CLUSTER_NAME_NOT_CONFIGURED: Unavailable = {
+  code: 'CLUSTER_NAME_NOT_CONFIGURED',
+  message: '클러스터 이름이 설정되지 않았습니다 (K8S_CLUSTER_NAME)',
+};
 
 const AWS_NOT_CONFIGURED: Unavailable = {
   code: 'AWS_NOT_CONFIGURED',
@@ -420,7 +422,6 @@ export class CostService implements OnApplicationBootstrap, OnModuleDestroy {
       aws: normal.aws,
       prices: mockPriceBook('normal', normal, now),
       hoursPerMonth: this.settings.current().estimation.hoursPerMonth,
-      eksSupportTier: eksSupportTier(normal.aws.eks?.version ?? null, now),
       clusterName: MOCK_CLUSTER_NAME,
     });
     this.mockBaselineResources = normalComp.sampleResources;
@@ -442,7 +443,6 @@ export class CostService implements OnApplicationBootstrap, OnModuleDestroy {
       aws: { ...world.aws, fetchedAt: floorTo(now, 300) },
       prices: book,
       hoursPerMonth: hpm,
-      eksSupportTier: eksSupportTier(world.aws.eks?.version ?? null, now),
       clusterName: MOCK_CLUSTER_NAME,
     });
     this.estimate = {
@@ -517,6 +517,22 @@ export class CostService implements OnApplicationBootstrap, OnModuleDestroy {
       await this.recompute();
       return;
     }
+    // live에서 클러스터 이름이 없으면 EC2 태그 필터 값이 없어 어느 리소스가 이 클러스터 것인지
+    // 고를 수 없다. mock 값으로 대체하지 않고 unknown으로 둔다 (AC-KOPS33).
+    if (this.mode === 'live' && !this.options.clusterName) {
+      this.estimate = emptyEstimate(intervalSec, CLUSTER_NAME_NOT_CONFIGURED);
+      this.sources?.markFailure(
+        'awsResources',
+        {
+          code: CLUSTER_NAME_NOT_CONFIGURED.code,
+          message: CLUSTER_NAME_NOT_CONFIGURED.message,
+        },
+        { state: 'not_configured', at: now.toISOString() },
+      );
+      await this.recompute();
+      this.emitEstimate();
+      return;
+    }
     const inv = this.inventory.snapshot();
     let aws: AwsResourceSnapshot;
     try {
@@ -542,12 +558,10 @@ export class CostService implements OnApplicationBootstrap, OnModuleDestroy {
     }
 
     const clusterName = this.options.clusterName;
-    const tier = eksSupportTier(aws.eks?.version ?? null, now);
     const base = {
       inventory: inv,
       aws,
       hoursPerMonth: s.estimation.hoursPerMonth,
-      eksSupportTier: tier,
       clusterName,
     };
     const dry = computeEstimate({ ...base, prices: emptyPriceBook() });
@@ -560,7 +574,6 @@ export class CostService implements OnApplicationBootstrap, OnModuleDestroy {
     );
     list.lb.forEach((l) => needs.lb.add(l));
     needs.ipv4 = list.ipv4;
-    needs.eks = list.eks;
     const { book, stats } = await this.prices.resolve(needs);
     this.updatePriceSources(stats, now);
     if (book.meta.allFailed) {
@@ -573,7 +586,6 @@ export class CostService implements OnApplicationBootstrap, OnModuleDestroy {
       this.emitEstimate();
       return;
     }
-    // 단가 조회 중 tier에 맞는 EKS 단가를 쓰도록 다시 계산
     const comp = computeEstimate({ ...base, prices: book });
     const invUsable = inv.state === 'ok' || inv.state === 'stale';
     this.estimate = {
@@ -619,7 +631,7 @@ export class CostService implements OnApplicationBootstrap, OnModuleDestroy {
     const volumes = await gw.describeVolumes({
       attachedInstanceIds: instances.map((i) => i.instanceId),
     });
-    // LB·EKS 실패는 치명적이지 않다: 이전 값 유지
+    // LB 조회 실패는 치명적이지 않다: 이전 값 유지
     let loadBalancers = this.lastAws?.loadBalancers ?? [];
     try {
       loadBalancers = await gw.describeLoadBalancers();
@@ -628,27 +640,9 @@ export class CostService implements OnApplicationBootstrap, OnModuleDestroy {
         `로드밸런서 조회 실패: ${classifyAwsError(err).awsCode}`,
       );
     }
-    let eks = this.lastAws?.eks ?? null;
-    if (this.options.clusterName) {
-      try {
-        eks = await gw.describeEksCluster(this.options.clusterName);
-      } catch (err) {
-        this.logger.warn(
-          `EKS 클러스터 조회 실패: ${classifyAwsError(err).awsCode}`,
-        );
-      }
-    }
-    // 지원 등급 기준: DescribeCluster 버전 우선, 없으면 클러스터(API 서버) 버전 (PM 결정)
-    const clusterVersion = usable
-      ? k8sMinorVersion(inv.kubernetesVersion ?? null)
-      : null;
-    if (!eks && clusterVersion) {
-      eks = {
-        name: this.options.clusterName ?? 'eks-cluster',
-        version: clusterVersion,
-      };
-    }
-    return { fetchedAt: now, instances, volumes, loadBalancers, eks };
+    // kOps에는 AWS 쪽 클러스터 객체가 없다. 클러스터 버전은 쿠버네티스 API 서버에서만 읽고
+    // (cluster-status `cluster.version`) 비용 계산에는 쓰지 않는다 (AC-KOPS08).
+    return { fetchedAt: now, instances, volumes, loadBalancers };
   }
 
   private updatePriceSources(
@@ -733,7 +727,7 @@ export class CostService implements OnApplicationBootstrap, OnModuleDestroy {
     const sampledAt = floorTo(this.now(), s.estimation.rateSampleIntervalSec);
     const byCat = Object.fromEntries(
       comp.categories.map((c) => [c.category, c.usdPerHour]),
-    ) as Record<'ec2' | 'ebs' | 'lb' | 'eks' | 'ipv4', number>;
+    ) as Record<'ec2' | 'ebs' | 'lb' | 'controlPlane' | 'ipv4', number>;
     if (this.mode === 'mock') {
       if (
         !this.mockSamples.some(
@@ -759,7 +753,7 @@ export class CostService implements OnApplicationBootstrap, OnModuleDestroy {
           ec2: byCat.ec2 ?? 0,
           ebs: byCat.ebs ?? 0,
           lb: byCat.lb ?? 0,
-          eks: byCat.eks ?? 0,
+          controlPlane: byCat.controlPlane ?? 0,
           ipv4: byCat.ipv4 ?? 0,
         },
         nodeCount: comp.nodeCount,
@@ -998,9 +992,8 @@ export class CostService implements OnApplicationBootstrap, OnModuleDestroy {
       : null;
 
     // ---------------------------------------------------------- 급증 A
-    const since7 = new Date(
-      now.getTime() - s.spike.rate.baselineDays * 86_400_000,
-    );
+    // baselineFrom이 있으면 그 이후 표본만 읽는다 (전환 시점 오탐 방지, DBA 요청 5)
+    const since7 = new Date(baselineSince(now, s.spike.rate));
     const samples = await this.rateSamples(since7);
     const baseline = computeRateBaseline(samples, now, s.spike.rate);
     let rateEval: RateSpikeEvaluation;
@@ -1143,7 +1136,7 @@ export class CostService implements OnApplicationBootstrap, OnModuleDestroy {
       categories: comp ? comp.categories : [],
       resources: comp
         ? comp.resources
-        : { ec2: [], ebs: [], lb: [], ipv4: [], eks: [] },
+        : { ec2: [], ebs: [], lb: [], ipv4: [], controlPlane: [] },
       pricing: {
         source: this.mode === 'mock' ? 'mock' : 'pricing_api',
         fetchedAt: est.prices?.fetchedAt ?? null,
@@ -1727,6 +1720,20 @@ export class CostService implements OnApplicationBootstrap, OnModuleDestroy {
           : null,
       alternatives: await this.alternatives(comp),
       ebsGbMonth: await this.ebsGbMonth(),
+      // 컨트롤 플레인 볼륨은 PVC가 아니라 storage[]에 없다. R-GP2가 etcd 볼륨을
+      // 대상에 넣을 수 있게 따로 넘긴다 (AC-KOPS42, etcd 전용 규칙은 만들지 않는다)
+      controlPlaneVolumes: (comp?.resources.controlPlane ?? [])
+        .filter((r) => r.kind === 'etcd_ebs' || r.kind === 'master_root_ebs')
+        .map((r) => ({
+          volumeRef: r.volumeId ?? r.key,
+          kind:
+            r.kind === 'etcd_ebs'
+              ? ('etcd' as const)
+              : ('master_root' as const),
+          volumeType: r.volumeType ?? 'unknown',
+          capacityBytes: r.sizeBytes ?? 0,
+          usdPerMonth: r.usdPerMonth,
+        })),
     };
   }
 
@@ -1807,7 +1814,7 @@ function awsUnavailable(err: unknown): Unavailable {
   if (info.kind === 'not_configured') return AWS_NOT_CONFIGURED;
   if (info.kind === 'access_denied') {
     const op =
-      /(ec2:\w+|elasticloadbalancing:\w+|eks:\w+)/.exec(info.message)?.[1] ??
+      /(ec2:\w+|elasticloadbalancing:\w+)/.exec(info.message)?.[1] ??
       'ec2:DescribeInstances';
     return { code: 'AWS_ACCESS_DENIED', message: `권한 없음: ${op}` };
   }

@@ -8,7 +8,7 @@ import {
   type OverviewSummaryProvider,
 } from '../common/overview-summary';
 import { SourceRegistry } from '../common/source-registry.service';
-import type { Status, StatusInfo } from '../common/status';
+import { worstStatus, type Status, type StatusInfo } from '../common/status';
 import type { DataSourceMode } from '../config/env.validation';
 import { ClusterStateService } from './state/cluster-state.service';
 
@@ -102,7 +102,11 @@ export class OverviewService implements OnApplicationBootstrap {
       attention: { total: v.attention.length, items: v.attention.slice(0, 8) },
       nav: {
         overview: v.overall.status,
-        nodes: v.areas.nodes.status.status,
+        // 컨트롤 플레인 메뉴를 신설하지 않는다(PM 결정 Q2) — 워커 영역과 컨트롤 플레인 영역의 최악
+        nodes: worstStatus([
+          v.areas.nodes.status.status,
+          v.areas.controlPlane.status.status,
+        ]),
         workloads: v.areas.workloads.status.status,
         pods: v.areas.pods.status.status,
         events: v.areas.events.status.status,
@@ -111,7 +115,7 @@ export class OverviewService implements OnApplicationBootstrap {
         advisor: advisorStatus,
         advisorBusy: advisorP?.busy?.() ?? false,
         stale: {
-          nodes: kubeStale,
+          nodes: kubeStale || v.areas.controlPlane.status.stale,
           workloads: kubeStale,
           pods: kubeStale,
           events: kubeStale,

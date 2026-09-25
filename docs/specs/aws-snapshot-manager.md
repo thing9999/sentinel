@@ -4,6 +4,7 @@
 - 상태: 초안 (열린 질문 없음. Q1~Q4 결정됨 2026-09-19, 사용자: 모두 권장안)
 - 관련 문서: `CLAUDE.md`(조회 전용·DATA_SOURCE·비밀값 규칙), `deploy/aws-snapshot/README.md`, `deploy/aws-snapshot/export.mjs`, `deploy/aws-snapshot/scan.mjs`, `deploy/aws-snapshot/lib/{scan,meta,former2-args}.mjs`, `docs/reports/aws-snapshot/backend.md`, `docs/api/common.md`
 - 이 기능은 `deploy/aws-snapshot/` CLI(Former2 내보내기)가 만든 **로컬 스냅샷 폴더**를 대시보드에서 보고 손질하는 화면이다. CLI를 대체하지 않는다.
+- **갱신: 2026-09-24 (kops-support).** 대상 환경이 EKS → kOps로 바뀌었지만 **이 기능의 동작은 달라지지 않는다.** "EKS 배포" 문구만 "클러스터에 배포한 대시보드"로 일반화했다(A5, 3.11, 6절, 7절 백엔드 항목, S2 예시 라벨). 근거는 `docs/specs/kops-support.md` 9절.
 
 ## 0. 사용자 확정 사항과 가정
 
@@ -22,7 +23,7 @@
 - A2. 스냅샷 폴더 구조와 파일 형식의 기준은 CLI다(`export.mjs`, `metadata.json` `schemaVersion: 1`). 대시보드는 CLI가 만든 파일을 읽고, CLI가 이해하는 형식을 깨지 않게 쓴다.
 - A3. 비밀값 스캔 규칙의 기준은 CLI 스캐너(`deploy/aws-snapshot/lib/scan.mjs`)다. 대시보드 스캔 결과는 같은 파일에 대해 `npm run scan --prefix deploy/aws-snapshot -- snapshots/<id>` 결과와 **같아야 한다**(규칙을 두 벌로 따로 관리하지 않는다. 방법은 백엔드가 정한다).
 - A4. 스냅샷 폴더 이름(시각)은 UTC다(`metadata.json`의 `snapshotIdTimezone: "UTC"`). 화면에는 브라우저 로컬 시각으로 보이고, 툴팁에 UTC 원문을 둔다(`docs/api/common.md` 1.5).
-- A5. 클러스터(EKS) 안에 배포된 대시보드에는 스냅샷 폴더가 없다. 이 기능은 사실상 **로컬 실행(docker compose / Docker 없이 실행)** 전용이다.
+- A5. **클러스터 안에 배포된 대시보드**에는 스냅샷 폴더가 없다. 이 기능은 사실상 **로컬 실행(docker compose / Docker 없이 실행)** 전용이다. (2026-09-24: "클러스터(EKS)" → "클러스터"로 일반화. 대상 환경이 kOps로 바뀌었지만 **동작은 그대로다**, `kops-support` 9절.)
 
 ## 1. 배경 / 목표
 
@@ -49,7 +50,7 @@
 6. 화면의 안내에 따라 터미널에서 `git diff`로 직접 확인하고 커밋한다. 대시보드는 커밋하지 않는다.
 
 ### S2. 스냅샷에 용도 기록
-1. 목록에서 `20260912-020000`에 라벨 "EKS 1.30 업그레이드 전"과 메모 "노드그룹 m6i.large 3대 시점, 복원 기준"을 붙인다.
+1. 목록에서 `20260912-020000`에 라벨 "쿠버네티스 1.30 업그레이드 전"과 메모 "노드그룹 m6i.large 3대 시점, 복원 기준"을 붙인다.
 2. 다음 날 목록에서 라벨로 검색해 바로 찾는다.
 
 ### S3. 정리
@@ -260,7 +261,7 @@
 - 스냅샷 폴더는 `docs/api/common.md` 2.3의 출처(`SourceStatus`) 중 하나로 다룬다(출처 이름은 백엔드). `GET /api/health`에도 나타난다.
 - **docker compose 실행 시**: 현재 api 컨테이너는 `./apps/api`와 kubeconfig만 마운트한다. 이 기능을 live로 쓰려면 `deploy/aws-snapshot/snapshots` 폴더를 api 컨테이너에 **쓰기 가능하게** 마운트해야 한다(백엔드 전달 사항). 이때 `deploy/aws-snapshot` 전체가 아니라 `snapshots/` 폴더만 마운트한다(`.env`, `.raw/`가 컨테이너에 보이지 않게).
 - **Docker 없이 실행**(`npm run start:dev --prefix apps/api`): 저장소 안의 `deploy/aws-snapshot/snapshots`를 가리키는 경로를 설정으로 준다.
-- **EKS 배포(`deploy/app.example.yaml`)**: 스냅샷 폴더가 없으므로 경로를 설정하지 않는 것이 기본이다 → 알 수 없음(설정 없음). 클러스터 안에서 이 기능을 쓰는 것은 범위 밖(6절).
+- **클러스터에 배포(`deploy/app.example.yaml`)**: 스냅샷 폴더가 없으므로 경로를 설정하지 않는 것이 기본이다 → 알 수 없음(설정 없음). 클러스터 안에서 이 기능을 쓰는 것은 범위 밖(6절).
 
 ### 3.12 mock 예시 스냅샷
 - mock 모드는 예시 스냅샷을 **메모리**에 두고, 편집·라벨·삭제(휴지통 포함)가 메모리에서만 일어난다. API를 재시작하거나 mock 초기화(`POST /api/mock/reset`)를 하면 원래 예시로 돌아간다. 실제 파일에는 절대 쓰지 않는다.
@@ -372,7 +373,7 @@
 - 여러 스냅샷 한꺼번에 삭제·편집
 - Terraform 구문 검사, CloudFormation 템플릿 검증(`validate-template`처럼 AWS를 부르는 검증 포함)
 - `.raw/` raw 데이터 보기·삭제
-- 클러스터(EKS)에 배포된 대시보드에서 이 기능 쓰기(스냅샷 저장소 연결)
+- 클러스터에 배포된 대시보드에서 이 기능 쓰기(스냅샷 저장소 연결)
 - 어드바이저에 스냅샷 템플릿을 넘기는 것
 - 여러 사용자 동시 편집·편집 잠금, 인증·권한
 
@@ -403,7 +404,7 @@
 - 경로 탐색 방지·심볼릭 링크 거부·정해진 파일 종류만(3.9), 원자적 저장·인코딩/줄바꿈 유지(3.7), 버전 기반 충돌 감지.
 - 파일 변경 감지(30초 이내, Windows 호스트 바인드 마운트에서 알림이 안 올 수 있음), 바뀐 스냅샷만 재스캔.
 - `docker-compose.yml`: api 서비스에 `./deploy/aws-snapshot/snapshots`를 **쓰기 가능하게** 마운트(폴더만. `deploy/aws-snapshot` 전체 금지), 경로 설정·쓰기 스위치를 `.env.example`에 추가. Docker 없이 실행할 때의 기본 경로 안내.
-- `deploy/app.example.yaml`(EKS)에는 스냅샷 경로를 넣지 않는다(설정 없음 → 알 수 없음).
+- `deploy/app.example.yaml`(클러스터 배포)에는 스냅샷 경로를 넣지 않는다(설정 없음 → 알 수 없음).
 - 인증이 없는 쓰기 API가 생기므로, docker compose의 api 포트 공개 범위를 로컬(127.0.0.1)로 좁히는 것을 검토하고 결과를 보고서에 남길 것.
 - 로그에 템플릿·라벨·메모 내용 금지(3.9).
 - (Q1 결정) 라벨·메모 파일 형식 정의, `deploy/aws-snapshot/README.md` 1장 폴더 구성·6장 체크리스트("파일 4개")를 갱신. CLI `npm run scan`이 그 파일도 스캔하는지(현재 폴더 스캔은 `.json`을 포함) 확인.

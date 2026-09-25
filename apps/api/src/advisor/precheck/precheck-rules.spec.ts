@@ -5,7 +5,12 @@ import {
 } from '../mock/mock-fixtures';
 import { sanitizeSnapshot } from '../snapshot/sanitize-snapshot';
 import type { AdvisorSnapshotV1 } from '../snapshot/snapshot.types';
-import { computePrechecks, isLatestTag, sortPrechecks } from './precheck-rules';
+import {
+  computePrechecks,
+  isLatestTag,
+  RULES,
+  sortPrechecks,
+} from './precheck-rules';
 
 const NOW = new Date('2026-09-19T05:00:00.000Z');
 
@@ -25,6 +30,7 @@ function mockSnapshot(over: (s: AdvisorSnapshotV1) => void = () => undefined) {
     storage: c.storage,
     loadBalancers: c.loadBalancers,
     unattachedVolumes: cost.unattachedVolumes,
+    controlPlaneVolumes: cost.controlPlaneVolumes,
     events: c.events,
     db: mockDbSection(),
     cost: cost.cost,
@@ -173,13 +179,101 @@ describe('computePrechecks (규칙 기반, LLM 없음)', () => {
   it('DB 기준: PVC 90% 이상 high, xid 5억 이상, 스팟', () => {
     const { snapshot: s } = mockSnapshot((x) => {
       x.db = { ...x.db!, pvcUsagePct: 93, xidAge: 600_000_000, onSpot: true };
-      x.cluster.supportTier = 'extended';
     });
     const m = byId(computePrechecks(s).items);
     expect(m.get('R-DB-PVC')?.severity).toBe('high');
     expect(m.get('R-DB-XID')?.severity).toBe('high');
     expect(m.get('R-DB-SPOT')?.severity).toBe('high');
-    expect(m.get('R-EKSVER')?.severity).toBe('high');
+    // kOps에는 확장 지원 단가가 없다 → 규칙 자체가 사라졌다 (AC-KOPS41)
+    expect(m.get('R-EKSVER')).toBeUndefined();
+    expect(Object.keys(RULES)).not.toContain('R-EKSVER');
+  });
+
+  // --- kops-support P5: 컨트롤 플레인 규칙 (AC-KOPS41~42) ---
+
+  it('R-CP-HA: 마스터 1대면 높음 (설정과 무관하게 지적한다)', () => {
+    const { snapshot: s } = mockSnapshot((x) => {
+      x.nodes = [x.nodes[0], { ...x.nodes[1], role: 'control_plane' }];
+      x.cluster.controlPlaneCount = 1;
+      x.cluster.controlPlane = {
+        ...x.cluster.controlPlane!,
+        haExpected: false, // 설정을 꺼도 어드바이저는 지적한다
+      };
+    });
+    const m = byId(computePrechecks(s).items);
+    expect(m.get('R-CP-HA')?.severity).toBe('high');
+    expect(m.get('R-CP-HA')?.category).toBe('reliability');
+  });
+
+  it('R-CP-SPOT: 마스터가 스팟이면 높음', () => {
+    const { snapshot: s } = mockSnapshot((x) => {
+      x.nodes = [
+        { ...x.nodes[0], role: 'control_plane', capacityType: 'spot' },
+        { ...x.nodes[1], role: 'control_plane' },
+        { ...x.nodes[2], role: 'control_plane' },
+        ...x.nodes.slice(3),
+      ];
+    });
+    const m = byId(computePrechecks(s).items);
+    expect(m.get('R-CP-SPOT')?.severity).toBe('high');
+    expect(m.get('R-CP-SPOT')?.summary).toContain('1대');
+  });
+
+  it('R-CP-RESTART: 구성요소 24시간 5회 이상이면 높음', () => {
+    const { snapshot: s } = mockSnapshot((x) => {
+      x.cluster.controlPlane = {
+        ...x.cluster.controlPlane!,
+        components: [
+          {
+            kind: 'kube-scheduler',
+            readyCount: 2,
+            expectedCount: 3,
+            restarts24h: 7,
+          },
+        ],
+      };
+    });
+    const m = byId(computePrechecks(s).items);
+    expect(m.get('R-CP-RESTART')?.severity).toBe('high');
+    expect(m.get('R-CP-RESTART')?.evidence[0].text).toContain('7회');
+  });
+
+  it('R-CP-RESTART: 5회 미만이면 걸리지 않는다', () => {
+    const { snapshot: s } = mockSnapshot((x) => {
+      x.cluster.controlPlane = {
+        ...x.cluster.controlPlane!,
+        components: [
+          {
+            kind: 'kube-scheduler',
+            readyCount: 3,
+            expectedCount: 3,
+            restarts24h: 4,
+          },
+        ],
+      };
+    });
+    expect(byId(computePrechecks(s).items).get('R-CP-RESTART')).toBeUndefined();
+  });
+
+  it('R-GP2: etcd 볼륨이 대상에 들어가면 IOPS 주석이 붙는다 (전용 규칙 없음)', () => {
+    const { snapshot: s } = mockSnapshot((x) => {
+      x.controlPlaneVolumes = [
+        {
+          volumeRef: 'vol-90',
+          kind: 'etcd',
+          volumeType: 'gp2',
+          capacityBytes: 20 * 1024 ** 3,
+          usdPerMonth: 2.28,
+        },
+      ];
+    });
+    const m = byId(computePrechecks(s).items);
+    const gp2 = m.get('R-GP2')!;
+    expect(gp2.summary).toContain('etcd 볼륨 포함');
+    expect(gp2.evidenceText).toContain('IOPS 민감');
+    expect(gp2.evidence.some((e) => e.text.includes('etcd 볼륨'))).toBe(true);
+    // etcd 전용 규칙을 만들지 않는다
+    expect(Object.keys(RULES)).not.toContain('R-ETCD-VOL');
   });
 
   it('출처가 없으면 규칙을 돌리지 않고 unknown', () => {

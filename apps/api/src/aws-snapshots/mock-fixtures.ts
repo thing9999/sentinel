@@ -75,7 +75,8 @@ function metadata(id: string, o: MetaOpts): string {
     snapshotIdTimezone: 'UTC',
     region: o.region ?? 'ap-northeast-2',
     profile: 'snapshot-export',
-    searchFilter: o.searchFilter === undefined ? 'prod-eks' : o.searchFilter,
+    searchFilter:
+      o.searchFilter === undefined ? 'prod.k8s.example.com' : o.searchFilter,
     regexFilter: null,
     services: o.services ?? {
       mode: 'exclude',
@@ -140,7 +141,7 @@ const USER_DATA_CFN = [
   '      InstanceType: m6i.large',
   '      UserData: !Base64 |',
   '        #!/bin/bash',
-  '        /etc/eks/bootstrap.sh prod-eks',
+  '        /usr/local/bin/nodeup --cluster=prod.k8s.example.com',
   '',
 ].join('\n');
 
@@ -267,7 +268,7 @@ export function buildMockTree(): MemTree {
       [FILE_NAME.metadata]: metadata(I.mappingMissing, {
         cfn: 3,
         tf: 3,
-        searchFilter: 'prod-ekss',
+        searchFilter: 'prod.k8s.example.comm',
       }),
       'notes.txt': '필터 오타로 거의 비어 있음\n',
       '.env': 'EXAMPLE_ONLY=1\n',
@@ -294,7 +295,7 @@ export function buildMockTree(): MemTree {
         schemaVersion: 1,
         tool: 'sentinel dashboard',
         snapshotId: I.labeled,
-        label: 'EKS 1.30 업그레이드 전',
+        label: 'kOps 1.30 업그레이드 전',
         memo: '노드그룹 m6i.large 3대 시점, 복원 기준',
         updatedAt: '2026-09-13T01:00:00.000Z',
         templateEdits: {

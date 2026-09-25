@@ -25,6 +25,7 @@ import {
 import { useNow } from "@/components/ui/hooks";
 
 import type { StreamTopic } from "../common/types";
+import { LogLink } from "../logs/LogLink";
 import type { MetricsState } from "../stream/reducer";
 import { useStreamStore, useTopics } from "../stream/StreamProvider";
 import { badgeProps, reasonTexts, watchStale, type StaleMark } from "../stream/stale";
@@ -85,7 +86,10 @@ export function podColumns(o: PodColumnOptions): Column<PodItem>[] {
       minWidth: 240,
       maxWidth: 360,
       sortable: true,
-      render: (p) => <ResourceName name={p.name} kind="pod" maxWidth={360} />,
+      // 로그 진입점 2(파드 목록 행)·5(워크로드 상세 소속 파드)·노드 상세: 이름 칸의 **로그 아이콘 링크**
+      // (`ResourceName.logHref`, components.md 21.10 — 복사 버튼과 같은 규칙으로 hover·행 포커스·터치에서 보인다).
+      // 주소는 **서버 `logHref` 그대로**(logs 11.4). `null`이면 아이콘이 없다
+      render: (p) => <ResourceName name={p.name} kind="pod" maxWidth={360} logHref={p.logHref} />,
     },
     {
       id: "namespace",
@@ -243,8 +247,10 @@ export function eventColumns(o: { now: number }): Column<EventItem>[] {
             name={e.involvedObject.name}
             kind={e.involvedObject.kind === "Node" ? "node" : e.involvedObject.kind === "Pod" ? "pod" : "other"}
             href={hrefForRef(e.involvedObject)}
-            maxWidth={280}
+            maxWidth={e.logHref ? 216 : 280}
           />
+          {/* 진입점 4: 대상이 파드일 때만 서버가 링크를 준다. "지난 시점"이라 `at`이 붙어 있다(따라가기 끔) */}
+          <LogLink href={e.logHref} label={`${e.involvedObject.name} 로그 보기 (이벤트 시각)`} />
         </span>
       ),
     },

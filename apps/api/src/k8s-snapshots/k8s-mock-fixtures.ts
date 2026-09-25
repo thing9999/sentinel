@@ -329,7 +329,7 @@ function metadata(
       idSource: 'kube-system-namespace-uid',
       context: o.context,
       name: o.name,
-      serverVersion: o.serverVersion ?? 'v1.34.1-eks-8a2c1f0',
+      serverVersion: o.serverVersion ?? 'v1.34.1',
     },
     scope: {
       namespaces: {
@@ -446,7 +446,7 @@ function withMeta(
 
 const PROD = {
   clusterId: MOCK_CLUSTER_ID,
-  name: 'prod-eks',
+  name: 'prod.k8s.example.com',
   context: 'sentinel-snapshot',
 };
 
@@ -578,20 +578,20 @@ export function buildK8sMockTrees(rules: K8sRules): K8sMockTrees {
       { ageMs: 5 * MIN },
     ),
   );
-  // 1. prod-eks 최신 (드리프트 자동 대상, 차이 3건)
+  // 1. prod.k8s.example.com 최신 (드리프트 자동 대상, 차이 3건)
   const latest = applyLatestChanges(base);
   snaps.set(
     ids.latest,
     snapshot(ids.latest, withMeta(ids.latest, rules, latest, PROD)),
   );
-  // 9. staging-eks (+ 관계 예외 3종, snapshot-3d 12.3)
+  // 9. staging.k8s.example.com (+ 관계 예외 3종, snapshot-3d 12.3)
   snaps.set(
     ids.staging,
     snapshot(
       ids.staging,
       withMeta(ids.staging, rules, applyStagingChanges(base), {
         clusterId: MOCK_OTHER_CLUSTER_ID,
-        name: 'staging-eks',
+        name: 'staging.k8s.example.com',
         context: 'sentinel-snapshot-staging',
       }),
     ),
@@ -698,7 +698,7 @@ export function buildK8sMockTrees(rules: K8sRules): K8sMockTrees {
         schemaVersion: 1,
         tool: 'sentinel dashboard',
         snapshotId: ids.labeled,
-        label: 'EKS 1.34 업그레이드 전',
+        label: 'kOps 1.34 업그레이드 전',
         memo: '업그레이드 전 기준점.\n웹 Deployment 레이블을 대시보드에서 정리함.',
         updatedAt: '2026-09-12T03:10:00.000Z',
         fileEdits: {
@@ -711,7 +711,7 @@ export function buildK8sMockTrees(rules: K8sRules): K8sMockTrees {
     );
     snaps.set(ids.labeled, snapshot(ids.labeled, files));
   }
-  // 2. prod-eks, 클러스터와 같은 내용 (지난 결과 "차이 없음")
+  // 2. prod.k8s.example.com, 클러스터와 같은 내용 (지난 결과 "차이 없음")
   snaps.set(
     ids.lastResult,
     snapshot(ids.lastResult, withMeta(ids.lastResult, rules, base, PROD)),
@@ -962,7 +962,7 @@ function benchResources(namespaces: number): Map<string, Obj> {
 export function buildK8sLargeTree(rules: K8sRules): MemTree {
   const bench = {
     clusterId: MOCK_BENCH_CLUSTER_ID,
-    name: 'bench-eks',
+    name: 'bench.k8s.example.com',
     context: 'sentinel-snapshot-bench',
   };
   const snaps = new Map<string, MemSnapshot>();

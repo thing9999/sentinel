@@ -42,6 +42,7 @@ function clusterMockInventory(
       providerId: n.providerId,
       instanceType: n.instanceType,
       capacityType: n.capacityType,
+      role: n.role,
       zone: n.zone,
       nodeGroup: n.nodeGroup,
       architecture: n.architecture,
@@ -102,7 +103,7 @@ function make(
     dataSource: 'mock',
     awsRegion: null,
     awsProfile: null,
-    clusterName: 'prod-eks',
+    clusterName: 'prod.k8s.example.com',
     env: {},
     timers: false,
     ...opts,
@@ -164,7 +165,7 @@ describe('CostService mock 모드', () => {
       'ebs',
       'lb',
       'ipv4',
-      'eks',
+      'controlPlane',
     ]);
     expect(
       estimate.resources.ec2.some(
@@ -293,12 +294,24 @@ describe('CostService mock 모드', () => {
       ])) as Any[];
       expectations[name](s, e, st, a, r);
       expect(gw!.total()).toBe(0);
-      // 클러스터 노드는 모두 비용 EC2 행에 있다 (시나리오 가상 노드만 추가)
-      const costNodes = new Set<string>(
-        (e.resources.ec2 as Any[]).map((x) => x.nodeName as string),
-      );
+      // 클러스터 노드는 모두 비용 행에 있다 (워커는 ec2, 마스터는 controlPlane — AC-KOPS29)
+      const costNodes = new Set<string>([
+        ...(e.resources.ec2 as Any[]).map((x) => x.nodeName as string),
+        ...(e.resources.controlPlane as Any[])
+          .filter((x) => x.kind === 'master_ec2')
+          .map((x) => x.nodeName as string),
+      ]);
       for (const n of inv.nodes) expect(costNodes.has(n.name)).toBe(true);
       if (name === 'normal') expect(costNodes.size).toBe(inv.nodes.length);
+      // 마스터가 ec2 카테고리에 중복으로 들어가지 않는다
+      const masters = new Set(
+        inv.nodes.filter((n) => n.role === 'control_plane').map((n) => n.name),
+      );
+      expect(
+        (e.resources.ec2 as Any[]).some((x) =>
+          masters.has(x.nodeName as string),
+        ),
+      ).toBe(false);
     },
   );
 
@@ -313,9 +326,16 @@ describe('CostService mock 모드', () => {
     const e = (await svc.getEstimate()) as Any;
     expect(e.resources.ec2.every((x: Any) => x.instanceId !== null)).toBe(true);
     const ebs = e.resources.ebs as Any[];
+    const workers = inv.nodes.filter((n) => n.role !== 'control_plane');
+    // 워커 루트 볼륨은 ebs, 마스터 루트 볼륨은 controlPlane(master_root_ebs)
     expect(ebs.filter((x) => x.attachment.type === 'node_root')).toHaveLength(
-      inv.nodes.length,
+      workers.length,
     );
+    expect(
+      (e.resources.controlPlane as Any[]).filter(
+        (x) => x.kind === 'master_root_ebs',
+      ),
+    ).toHaveLength(inv.nodes.length - workers.length);
     const pvcRows = ebs.filter((x) => x.attachment.type === 'pvc');
     const bound = inv.pvcs.filter((p) => p.phase === 'Bound');
     expect(
@@ -346,34 +366,41 @@ describe('CostService mock 모드', () => {
     expect(al.unavailable.code).toBe('SOURCE_NOT_CONFIGURED');
   });
 
-  it('EKS 지원 등급은 클러스터 버전 기준: cluster mock 1.34 → 표준, 1.30 → 확장 ($0.60/h)', async () => {
-    const std = make(
+  // kOps 전환: 컨트롤 플레인 관리 요금 행이 사라지고 마스터 실비가 대신 잡힌다 (AC-KOPS27~29)
+  it('마스터는 controlPlane 카테고리로 가고 ec2에 중복으로 잡히지 않는다', async () => {
+    const inv = clusterMockInventory();
+    const { svc } = make(
       {},
       new FakeGateway(),
-      clusterPort(() => clusterMockInventory()),
+      clusterPort(() => inv),
     );
-    await std.svc.start();
-    const e1 = (await std.svc.getEstimate()) as Any;
-    expect(e1.resources.eks[0]).toMatchObject({
-      version: '1.34',
-      supportTier: 'standard',
-      usdPerHour: 0.1,
-    });
-    const ext = make(
-      {},
-      new FakeGateway(),
-      clusterPort(() => ({
-        ...clusterMockInventory(),
-        kubernetesVersion: '1.30',
-      })),
+    await svc.start();
+    const e = (await svc.getEstimate()) as Any;
+    const masters = inv.nodes.filter((n) => n.role === 'control_plane');
+    expect(masters.length).toBeGreaterThan(0);
+    const cpEc2 = (e.resources.controlPlane as Any[]).filter(
+      (r) => r.kind === 'master_ec2',
     );
-    await ext.svc.start();
-    const e2 = (await ext.svc.getEstimate()) as Any;
-    expect(e2.resources.eks[0]).toMatchObject({
-      version: '1.30',
-      supportTier: 'extended',
-      usdPerHour: 0.6,
-    });
+    expect(cpEc2).toHaveLength(masters.length);
+    expect(
+      (e.resources.ec2 as Any[]).some((r) =>
+        masters.some((m) => m.name === r.nodeName),
+      ),
+    ).toBe(false);
+    // 카테고리 합계 = 전체 추정 소모율
+    const catSum = (e.categories as Any[]).reduce(
+      (a, c) => a + (c.usdPerHour as number),
+      0,
+    );
+    expect(Math.abs(catSum - (e.total.usdPerHour as number))).toBeLessThan(
+      0.01,
+    );
+    const cp = (e.categories as Any[]).find(
+      (c) => c.category === 'controlPlane',
+    )!;
+    expect(cp.label).toBe('컨트롤 플레인');
+    expect(cp.apiLb).toBeDefined();
+    expect(cp.byKind.map((k: Any) => k.kind)).toContain('master_ec2');
   });
 
   it('알 수 없는 시나리오는 400', () => {
@@ -431,7 +458,6 @@ describe('CostService live 모드', () => {
   it('주기 작업 한 번 = 리소스 조회 + 단가, 이후 GET 반복은 AWS 호출 없음', async () => {
     const gw = new FakeGateway();
     gw.instances = [instance({ instanceId: 'i-1', instanceType: 'm6i.large' })];
-    gw.eks = { name: 'prod-eks', version: '1.34' };
     gw.products = (svc, f) =>
       svc === 'AmazonEC2' && f.instanceType
         ? [
@@ -455,8 +481,10 @@ describe('CostService live 모드', () => {
     await svc.start();
     const e = (await svc.getEstimate()) as Any;
     expect(e.available).toBe(true);
-    // 인벤토리 없음 → 태그 기반 인스턴스 1대 + EKS
-    expect(e.total.usdPerHour).toBeCloseTo(0.218, 6);
+    // 인벤토리 없음 → 태그 기반 인스턴스 1대만.
+    // 마스터 판별은 노드 라벨에서 출발하므로 인벤토리가 없으면 컨트롤 플레인 행도 없다
+    expect(e.total.usdPerHour).toBeCloseTo(0.118, 6);
+    expect(e.resources.controlPlane).toHaveLength(0);
     const before = gw.total();
     for (let i = 0; i < 20; i += 1) {
       await svc.getSummary();
@@ -473,56 +501,30 @@ describe('CostService live 모드', () => {
     expect(alloc.unavailable.code).toBe('SOURCE_NOT_CONFIGURED');
   });
 
-  it.each([
-    // DescribeCluster 값이 있으면 그 값 우선
-    { described: '1.34', cluster: '1.30', version: '1.34', tier: 'standard' },
-    // DescribeCluster 결과가 없으면 클러스터(API 서버) 버전
-    { described: null, cluster: '1.31', version: '1.31', tier: 'extended' },
-  ])(
-    'EKS 버전: DescribeCluster $described, 클러스터 $cluster → $version ($tier)',
-    async ({ described, cluster, version, tier }) => {
-      const gw = new FakeGateway();
-      gw.eks = described ? { name: 'prod-eks', version: described } : null;
-      gw.products = (svc, f) =>
-        svc === 'AmazonEC2' && f.instanceType
-          ? [
-              {
-                attributes: {},
-                onDemand: [{ unit: 'Hrs', usd: 0.118, description: '' }],
-              },
-            ]
-          : svc === 'AmazonEKS'
-            ? [
-                {
-                  attributes: { usagetype: 'APN2-AmazonEKS-Hours:perCluster' },
-                  onDemand: [{ unit: 'Hrs', usd: 0.1, description: '' }],
-                },
-                {
-                  attributes: {
-                    usagetype: 'APN2-AmazonEKS-Hours:extendedSupport',
-                  },
-                  onDemand: [{ unit: 'Hrs', usd: 0.6, description: '' }],
-                },
-              ]
-            : [];
-      const { svc } = make(
-        { dataSource: 'live', awsRegion: 'ap-northeast-2' },
-        gw,
-        clusterPort(() => ({
-          ...clusterMockInventory(),
-          kubernetesVersion: cluster,
-        })),
-      );
-      await svc.start();
-      const e = (await svc.getEstimate()) as Any;
-      expect(e.resources.eks).toHaveLength(1);
-      expect(e.resources.eks[0]).toMatchObject({
-        version,
-        supportTier: tier,
-        usdPerHour: tier === 'extended' ? 0.6 : 0.1,
-      });
-    },
-  );
+  // AC-KOPS32: AWS 호출 목록에 eks:*가 없다
+  it('live 주기 작업이 AmazonEKS 단가를 조회하지 않는다', async () => {
+    const gw = new FakeGateway();
+    const asked: string[] = [];
+    gw.products = (svc, f) => {
+      asked.push(svc);
+      return svc === 'AmazonEC2' && f.instanceType
+        ? [
+            {
+              attributes: {},
+              onDemand: [{ unit: 'Hrs', usd: 0.118, description: '' }],
+            },
+          ]
+        : [];
+    };
+    const { svc } = make(
+      { dataSource: 'live', awsRegion: 'ap-northeast-2' },
+      gw,
+      clusterPort(() => clusterMockInventory()),
+    );
+    await svc.start();
+    await svc.getEstimate();
+    expect(asked).not.toContain('AmazonEKS');
+  });
 
   it('CE 상태: 새로고침 1회 최대 호출 수·예상 비용을 서버가 준다', async () => {
     const { svc } = make({ dataSource: 'live', awsRegion: 'ap-northeast-2' });

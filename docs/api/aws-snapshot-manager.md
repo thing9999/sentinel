@@ -144,7 +144,7 @@ type WriteBlockCode =
   "schemaVersion": 1,
   "tool": "sentinel dashboard",
   "snapshotId": "20260912-020000",
-  "label": "EKS 1.30 업그레이드 전",
+  "label": "쿠버네티스 1.30 업그레이드 전",
   "memo": "노드그룹 m6i.large 3대 시점, 복원 기준",
   "updatedAt": "2026-09-19T05:10:00.000Z",
   "templateEdits": {
@@ -348,7 +348,7 @@ interface ExportProgress {
       "notesUpdatedAt": null,
       "region": "ap-northeast-2",
       "scope": {
-        "searchFilter": "prod-eks",
+        "searchFilter": "prod.k8s.example.com",
         "regexFilter": null,
         "services": { "mode": "exclude", "list": ["SecretsManager", "SSM", "Lambda"] }
       },
@@ -465,7 +465,7 @@ interface ExportProgress {
         "snapshotIdTimezone": "UTC",
         "region": "ap-northeast-2",
         "profile": "snapshot-export",
-        "searchFilter": "prod-eks",
+        "searchFilter": "prod.k8s.example.com",
         "regexFilter": null,
         "services": { "mode": "exclude", "list": ["SecretsManager", "SSM", "Lambda"] },
         "allowSensitiveServices": false,
@@ -762,7 +762,7 @@ interface ExportProgress {
 
 **요청**
 ```json
-{ "label": "EKS 1.30 업그레이드 전", "memo": "노드그룹 m6i.large 3대 시점, 복원 기준", "baseVersion": "sha256:44136fa3…" }
+{ "label": "쿠버네티스 1.30 업그레이드 전", "memo": "노드그룹 m6i.large 3대 시점, 복원 기준", "baseVersion": "sha256:44136fa3…" }
 ```
 
 | 필드 | 규칙 (명세 3.5) |
@@ -780,7 +780,7 @@ interface ExportProgress {
 {
   "dataSource": "live",
   "generatedAt": "2026-09-19T05:10:00.000Z",
-  "notes": { "label": "EKS 1.30 업그레이드 전", "memo": "노드그룹 m6i.large 3대 시점, 복원 기준", "updatedAt": "2026-09-19T05:10:00.000Z", "version": "sha256:b2c0…", "fileExists": true },
+  "notes": { "label": "쿠버네티스 1.30 업그레이드 전", "memo": "노드그룹 m6i.large 3대 시점, 복원 기준", "updatedAt": "2026-09-19T05:10:00.000Z", "version": "sha256:b2c0…", "fileExists": true },
   "snapshot": { "...": "SnapshotListItem" },
   "revision": 44
 }
@@ -981,7 +981,7 @@ interface ExportProgress {
 | `20260916-150000` | 4. `metadata.json` 손상 | critical |
 | `20260915-101010` | 6. `logical-id-mapping.json` 없음 + 예상 밖 파일(`notes.txt`, `.env`) | warning |
 | `20260914-080000` | 5. `terraform.tf` 없음 | critical |
-| `20260912-020000` | 8. 라벨 "EKS 1.30 업그레이드 전"·메모, 내보내기 후 편집(CloudFormation 42 → 40), `modifiedByDashboard: true` | ok (정보 `RESOURCES_CHANGED_SINCE_EXPORT`) |
+| `20260912-020000` | 8. 라벨 "쿠버네티스 1.30 업그레이드 전"·메모, 내보내기 후 편집(CloudFormation 42 → 40), `modifiedByDashboard: true` | ok (정보 `RESOURCES_CHANGED_SINCE_EXPORT`) |
 | `20260910-000000` | 9. `cloudformation.yml` 약 5.5 MB (편집 상한 초과, 보기 전용) | ok |
 
 - 휴지통 예시 1개: `20260901-000000__20260910T010203000Z`(복원 가능).
@@ -1007,7 +1007,7 @@ interface ExportProgress {
 
 | 이름 | 기본 | 설명 |
 |---|---|---|
-| `AWS_SNAPSHOT_DIR` | (없음) | 스냅샷 루트. **비우면 live에서 `not_configured`**. 상대 경로는 api 프로세스 작업 폴더 기준. Docker 없이: `../../deploy/aws-snapshot/snapshots`. docker compose: `/data/aws-snapshots`(15절 마운트). EKS(`deploy/app.example.yaml`): 넣지 않음 |
+| `AWS_SNAPSHOT_DIR` | (없음) | 스냅샷 루트. **비우면 live에서 `not_configured`**. 상대 경로는 api 프로세스 작업 폴더 기준. Docker 없이: `../../deploy/aws-snapshot/snapshots`. docker compose: `/data/aws-snapshots`(15절 마운트). 클러스터 안 배포(`deploy/app.example.yaml`): 넣지 않음 |
 | `AWS_SNAPSHOT_LIB_DIR` | `../../deploy/aws-snapshot/lib` (작업 폴더 기준) | CLI 스캐너 lib 위치(2절). docker compose: `/opt/aws-snapshot/lib` |
 | `AWS_SNAPSHOT_WRITE_ENABLED` | `true` | 쓰기 기능 전체 스위치(명세 3.9). `false`면 모든 쓰기 403 `SNAPSHOT_WRITE_DISABLED`. 환경 변수로만 바꾼다(API로 바꾸는 경로 없음, DBA 권고) |
 | `AWS_SNAPSHOT_IN_PROGRESS_MIN` | `30` | "내보내기 진행 중일 수 있음" 기준(분) |
@@ -1056,7 +1056,7 @@ interface ExportProgress {
 - **`deploy/aws-snapshot/lib/scan.mjs`**: `scanPaths` 폴더 순회에서 `.trash` 폴더 건너뛰기(CLI `npm run scan`이 휴지통을 스캔하지 않게), 규칙 목록 `listRules()` export 추가(6.5) + 테스트. 2절의 필수 export에 `listRules`는 넣지 않는다(없으면 6.5만 503).
 - **`deploy/aws-snapshot/.gitignore`**: `snapshots/.trash/`, `snapshots/**/.*.sentinel-tmp-*` 추가.
 - **`deploy/aws-snapshot/README.md`**: 1장 폴더 구성(`notes.json`, `.trash/`), 6장 체크리스트("파일 4개" → "4개 + 대시보드가 만든 `notes.json`"), 7.1 문구 보완(Q4: "대시보드·편집기로 하는 비밀값 정리·검토 주석은 원본에서, 복원용 손질은 복사본에서").
-- **`deploy/app.example.yaml`**: 스냅샷 변수를 넣지 않는다(EKS → `not_configured`).
+- **`deploy/app.example.yaml`**: 스냅샷 변수를 넣지 않는다(클러스터 안 배포 → `not_configured`).
 - 주기 확인은 `fs.watch`를 쓰지 않아도 된다(Windows 호스트 → Linux 컨테이너 바인드 마운트에서 알림이 안 옴). 루트 `readdir` + 스냅샷별 항목 `lstat`(mtime·size) 지문 비교 → 바뀐 스냅샷만 다시 읽고 스캔. 임시 파일(`.*.sentinel-tmp-*`)은 예상 밖 파일로 세지 않는다.
 
 ---
@@ -1145,6 +1145,9 @@ interface ExportProgress {
 목록·요약·휴지통 목록은 출처가 없어도 200 + unknown이다(`common.md` 3.2).
 
 ## 18. 변경 이력
+- 2026-09-24 (kops-support 계약, backend 3단계): 문구만 일반화. **응답·엔드포인트·에러 코드 변경 없음.**
+  - "EKS 배포" → "클러스터 안 배포"(`AWS_SNAPSHOT_DIR` 설명, `deploy/app.example.yaml` 안내). 동작은 그대로다(클러스터 안에 배포하면 보통 `not_configured`).
+  - 예시 라벨 "EKS 1.30 업그레이드 전" → "쿠버네티스 1.30 업그레이드 전", `searchFilter` 예시 `prod-eks` → `prod.k8s.example.com`.
 - 2026-09-19: 최초 작성 (backend, 4단계 계약. 구현 전)
 - 2026-09-19 (5단계 구현 반영): 응답 모양 변경 없음. 동작 정정만.
   - 1.2 `WriteBlockCode`에 `FILE_UNREADABLE` 추가. `READ_ONLY`는 `EROFS`에서만 굳힌다.

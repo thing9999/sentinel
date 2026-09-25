@@ -234,7 +234,8 @@ export class AdvisorPrecheckService
       computation,
       status,
       summary: built?.summary ?? {
-        nodeCount: 0,
+        workerCount: 0,
+        controlPlaneCount: 0,
         workloadCount: 0,
         pvcCount: 0,
         loadBalancerCount: 0,

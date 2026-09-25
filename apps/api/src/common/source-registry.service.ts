@@ -16,7 +16,9 @@ export type SourceId =
   | 'agentBridge'
   | 'dashboardDb'
   | 'snapshotStore'
-  | 'k8sSnapshotStore';
+  | 'k8sSnapshotStore'
+  /** 외부 로그 스택 (logs L2). **비어 있는 것은 오류가 아니다** — `not_configured`는 degraded가 아니다 */
+  | 'logBackend';
 
 export const SOURCE_IDS: readonly SourceId[] = [
   'kube',
@@ -31,6 +33,7 @@ export const SOURCE_IDS: readonly SourceId[] = [
   'dashboardDb',
   'snapshotStore',
   'k8sSnapshotStore',
+  'logBackend',
 ];
 
 export type SourceState =
@@ -60,6 +63,8 @@ const DEFAULT_INTERVAL: Record<SourceId, number | null> = {
   dashboardDb: null,
   snapshotStore: 10,
   k8sSnapshotStore: 10,
+  // 로그 화면을 보고 있을 때만 확인한다 (어드바이저 브리지와 같은 성격)
+  logBackend: 30,
 };
 
 /** ×3 규칙의 예외 (aws-snapshot-manager.md 14절: 스냅샷 폴더 stale 90초) */

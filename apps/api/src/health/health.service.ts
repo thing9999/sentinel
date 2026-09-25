@@ -40,7 +40,9 @@ export type HealthCheckId =
   | 'agentBridge'
   | 'dashboardDb'
   | 'snapshotStore'
-  | 'k8sSnapshotStore';
+  | 'k8sSnapshotStore'
+  /** 외부 로그 스택 (logs L2). **`not_configured`는 `degraded`가 아니다** (AC-LOG45) */
+  | 'logBackend';
 
 export interface HealthResponse {
   status: 'ok' | 'degraded';
@@ -92,7 +94,7 @@ export function hasAwsCredentials(env: NodeJS.ProcessEnv): boolean {
     env.AWS_CONTAINER_CREDENTIALS_FULL_URI ||
     env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI
   )
-    return true; // EKS Pod Identity 등
+    return true; // 컨테이너 자격 증명 공급자 등
   const dir = join(homedir(), '.aws');
   const credFile = env.AWS_SHARED_CREDENTIALS_FILE ?? join(dir, 'credentials');
   const cfgFile = env.AWS_CONFIG_FILE ?? join(dir, 'config');
@@ -282,7 +284,8 @@ export class HealthService implements OnApplicationBootstrap, OnModuleDestroy {
         | 'monitoredDb'
         | 'costExplorer'
         | 'snapshotStore'
-        | 'k8sSnapshotStore',
+        | 'k8sSnapshotStore'
+        | 'logBackend',
     ) =>
       mock
         ? {
@@ -303,6 +306,7 @@ export class HealthService implements OnApplicationBootstrap, OnModuleDestroy {
       dashboardDb: this.dashboardDbCheck(),
       snapshotStore: src('snapshotStore'),
       k8sSnapshotStore: src('k8sSnapshotStore'),
+      logBackend: src('logBackend'),
     };
     const degraded = Object.values(checks).some(
       (c) => c.configured && (c.state === 'unavailable' || c.state === 'stale'),

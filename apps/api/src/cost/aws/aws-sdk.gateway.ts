@@ -19,7 +19,6 @@ import {
   type Tag,
   type Volume,
 } from '@aws-sdk/client-ec2';
-import { DescribeClusterCommand, EKSClient } from '@aws-sdk/client-eks';
 import {
   DescribeLoadBalancersCommand,
   DescribeTagsCommand,
@@ -31,7 +30,6 @@ import {
 import { GetProductsCommand, PricingClient } from '@aws-sdk/client-pricing';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
 import type {
-  AwsEksCluster,
   AwsInstance,
   AwsLoadBalancer,
   AwsVolume,
@@ -52,7 +50,6 @@ const MAX_DESCRIBE_PAGES = 20;
 export class AwsSdkCostGateway implements CostAwsGateway {
   private readonly ec2: EC2Client;
   private readonly elb: ElasticLoadBalancingV2Client;
-  private readonly eks: EKSClient;
   private readonly pricing: PricingClient;
   private readonly ce: CostExplorerClient;
 
@@ -64,7 +61,6 @@ export class AwsSdkCostGateway implements CostAwsGateway {
     const base = { credentials, maxAttempts: 2 };
     this.ec2 = new EC2Client({ ...base, region });
     this.elb = new ElasticLoadBalancingV2Client({ ...base, region });
-    this.eks = new EKSClient({ ...base, region });
     this.pricing = new PricingClient({ ...base, region: GLOBAL_REGION });
     // CE는 재시도하면 호출 비용이 늘어나므로 1회만
     this.ce = new CostExplorerClient({
@@ -221,15 +217,6 @@ export class AwsSdkCostGateway implements CostAwsGateway {
     });
   }
 
-  async describeEksCluster(name: string): Promise<AwsEksCluster | null> {
-    const res = await this.eks.send(new DescribeClusterCommand({ name }));
-    if (!res.cluster) return null;
-    return {
-      name: res.cluster.name ?? name,
-      version: res.cluster.version ?? null,
-    };
-  }
-
   async getProducts(
     serviceCode: string,
     filters: Record<string, string>,
@@ -371,11 +358,8 @@ function toInstance(i: Instance): AwsInstance | null {
     architecture: normalizeArch(i.Architecture),
     publicIpv4Count: publicIps.size,
     rootVolumeIds: root,
-    nodeGroupTag:
-      tags['eks:nodegroup-name'] ??
-      tags['karpenter.sh/nodepool'] ??
-      tags['karpenter.sh/provisioner-name'] ??
-      null,
+    // kOps InstanceGroup 태그 (F2). 하위 호환 키는 두지 않는다 (AC-KOPS04)
+    nodeGroupTag: tags['kops.k8s.io/instancegroup'] ?? null,
   };
 }
 

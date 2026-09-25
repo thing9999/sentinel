@@ -28,7 +28,6 @@ export interface PriceNeeds {
   ebs: Map<string, { iops: boolean; throughput: boolean }>;
   lb: Set<LbType>;
   ipv4: boolean;
-  eks: boolean;
 }
 
 export function emptyNeeds(): PriceNeeds {
@@ -38,7 +37,6 @@ export function emptyNeeds(): PriceNeeds {
     ebs: new Map(),
     lb: new Set(),
     ipv4: false,
-    eks: false,
   };
 }
 
@@ -163,12 +161,6 @@ export class PriceService {
       }),
     );
     const ipv4 = needs.ipv4 ? toQuote(await this.ipv4Quote()) : null;
-    const eks = needs.eks
-      ? {
-          standard: toQuote(await this.eksQuote('standard')),
-          extended: toQuote(await this.eksQuote('extended')),
-        }
-      : { standard: null, extended: null };
 
     const oldest = fetched.length
       ? new Date(Math.min(...fetched.map((d) => d.getTime())))
@@ -179,7 +171,6 @@ export class PriceService {
       ebs,
       lb,
       ipv4,
-      eks,
       meta: {
         fetchedAt: oldest ? oldest.toISOString() : null,
         cacheUsed,
@@ -300,23 +291,6 @@ export class PriceService {
         );
       },
     );
-  }
-
-  eksQuote(tier: 'standard' | 'extended'): Promise<QuoteResult> {
-    const re =
-      tier === 'standard'
-        ? /AmazonEKS-Hours:perCluster$/i
-        : /AmazonEKS-Hours:extendedSupport$/i;
-    return this.quote('pricing_api', `eks:${tier}`, 'Hrs', async () => {
-      const products = await this.gateway.getProducts(
-        'AmazonEKS',
-        { regionCode: this.region },
-        5,
-      );
-      return pickHourly(
-        products.filter((p) => re.test(p.attributes.usagetype ?? '')),
-      );
-    });
   }
 
   // ------------------------------------------------------------------ 캐시

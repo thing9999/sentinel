@@ -10,6 +10,8 @@ import {
 import { r6 } from '../cost-util';
 import {
   CATEGORY_LABELS,
+  CONTROL_PLANE_KIND_LABELS,
+  CONTROL_PLANE_KINDS,
   COST_CATEGORIES,
   spotKey,
   type AwsInstance,
@@ -18,7 +20,7 @@ import {
   type CostCategory,
   type EbsRow,
   type Ec2Row,
-  type EksRow,
+  type ControlPlaneRow,
   type EstimateComputation,
   type Ipv4Row,
   type K8sRef,
@@ -51,7 +53,6 @@ export interface EstimateInput {
   aws: AwsResourceSnapshot;
   prices: PriceBook;
   hoursPerMonth: number;
-  eksSupportTier: 'standard' | 'extended';
   /** LB 소속 판단용 (태그 elbv2.k8s.aws/cluster 등) */
   clusterName: string | null;
 }
@@ -71,10 +72,19 @@ export function computeEstimate(input: EstimateInput): EstimateComputation {
 
   // -------------------------------------------------------------- EC2
   const ec2: Ec2Row[] = [];
+  /** 컨트롤 플레인(마스터) 내역. ec2·ebs·lb·ipv4에 중복으로 넣지 않는다 (AC-KOPS29) */
+  const cp: ControlPlaneRow[] = [];
   const nodeByInstance = new Map<string, string>();
   const clusterInstanceIds = new Set<string>();
-  const ipv4Sources: { key: string; nodeName: string | null; count: number }[] =
-    [];
+  /** 마스터 인스턴스 ID (EBS·IPv4 분류의 기준) */
+  const masterInstanceIds = new Set<string>();
+  const masterNodeNames = new Set<string>();
+  const ipv4Sources: {
+    key: string;
+    nodeName: string | null;
+    count: number;
+    master: boolean;
+  }[] = [];
 
   const addEc2 = (node: InventoryNode | null, inst: AwsInstance | null) => {
     const instanceType = inst?.instanceType ?? node?.instanceType ?? null;
@@ -121,11 +131,12 @@ export function computeEstimate(input: EstimateInput): EstimateComputation {
     if (!unitPrice) notes.push(NOTE_UNPRICED);
     const usdPerHour = unitPrice ? r6(unitPrice.usdPerHour) : null;
     const nodeName = node?.name ?? null;
+    // 마스터 판별은 **노드 라벨에서 출발**한다 (역할 태그 규칙을 확인하지 못했으므로 태그에 의존하지 않는다)
+    const isMaster = node?.role === 'control_plane';
     const key = nodeName
       ? `node:${nodeName}`
       : `instance:${inst?.instanceId ?? 'unknown'}`;
-    ec2.push({
-      key,
+    const row = {
       nodeName,
       instanceId: inst?.instanceId ?? null,
       nodeGroup: node?.nodeGroup ?? inst?.nodeGroupTag ?? null,
@@ -139,7 +150,14 @@ export function computeEstimate(input: EstimateInput): EstimateComputation {
       usdPerHour,
       usdPerMonth: perMonth(usdPerHour),
       notes,
-    });
+    };
+    if (isMaster) {
+      cp.push({ key: `cp:${key}`, kind: 'master_ec2', ...row });
+      if (nodeName) masterNodeNames.add(nodeName);
+      if (inst) masterInstanceIds.add(inst.instanceId);
+    } else {
+      ec2.push({ key, ...row });
+    }
     if (inst) {
       clusterInstanceIds.add(inst.instanceId);
       if (nodeName) nodeByInstance.set(inst.instanceId, nodeName);
@@ -148,6 +166,7 @@ export function computeEstimate(input: EstimateInput): EstimateComputation {
           key: `ipv4:${nodeName ?? inst.instanceId}`,
           nodeName,
           count: inst.publicIpv4Count,
+          master: isMaster,
         });
       }
     }
@@ -163,22 +182,28 @@ export function computeEstimate(input: EstimateInput): EstimateComputation {
   }
 
   // -------------------------------------------------------------- IPv4
-  const ipv4: Ipv4Row[] = ipv4Sources.map((s) => {
+  const ipv4: Ipv4Row[] = [];
+  for (const s of ipv4Sources) {
     const p = prices.ipv4;
     const usdPerHour = p ? r6(p.usd * s.count) : null;
-    return {
-      key: s.key,
+    const row = {
       nodeName: s.nodeName,
       count: s.count,
       priced: p !== null,
       unitPrice: p
-        ? { usdPerHour: p.usd, source: 'pricing_api', asOf: p.fetchedAt }
+        ? ({
+            usdPerHour: p.usd,
+            source: 'pricing_api',
+            asOf: p.fetchedAt,
+          } as const)
         : null,
       usdPerHour,
       usdPerMonth: perMonth(usdPerHour),
       notes: p ? [] : [NOTE_UNPRICED],
     };
-  });
+    if (s.master) cp.push({ key: `cp:${s.key}`, kind: 'master_ipv4', ...row });
+    else ipv4.push({ key: s.key, ...row });
+  }
 
   // -------------------------------------------------------------- EBS
   const outOfCluster: Partial<Record<CostCategory, number>> = {};
@@ -242,7 +267,33 @@ export function computeEstimate(input: EstimateInput): EstimateComputation {
       bumpOut('ebs');
       continue;
     }
-    ebs.push(priceVolume(v, attachment, prices, hoursPerMonth));
+    const row = priceVolume(v, attachment, prices, hoursPerMonth);
+    const onMaster =
+      v.attachedInstanceIds.some((id) => masterInstanceIds.has(id)) ||
+      (attachment.nodeName !== null &&
+        masterNodeNames.has(attachment.nodeName));
+    // 마스터에 붙어 있고 PVC가 아닌 볼륨 → 컨트롤 플레인 (루트 볼륨 / etcd 볼륨)
+    if (onMaster && attachment.type !== 'pvc') {
+      cp.push({
+        key: `cp:${row.key}`,
+        kind: attachment.type === 'node_root' ? 'master_root_ebs' : 'etcd_ebs',
+        volumeId: row.volumeId,
+        volumeType: row.volumeType,
+        sizeBytes: row.sizeBytes,
+        iops: row.iops,
+        throughputMibps: row.throughputMibps,
+        // main/events 구분은 볼륨 태그 규칙을 확인하지 못해 null로 둔다 (계약 3.1)
+        ...(attachment.type === 'other' ? { etcdCluster: null } : {}),
+        nodeName: attachment.nodeName,
+        priced: row.priced,
+        unitPrice: row.unitPrice,
+        usdPerHour: row.usdPerHour,
+        usdPerMonth: row.usdPerMonth,
+        notes: row.notes,
+      });
+      continue;
+    }
+    ebs.push(row);
   }
 
   // -------------------------------------------------------------- LB
@@ -258,21 +309,27 @@ export function computeEstimate(input: EstimateInput): EstimateComputation {
     }
   }
   const lb: LbRow[] = [];
+  /**
+   * API 서버 LB 후보 (계약 3.1 "후보 규칙 — 추정. 확정 아님", 명세 U2):
+   * ① 클러스터 태그가 있고 ② 어떤 Service·Ingress에도 귀속되지 않는다.
+   * kOps NLB의 확정 이름·태그 규칙은 실클러스터에서 확인하지 못했다 → 결과에 항상 "추정" 표시를 붙인다.
+   */
+  const apiLbCandidates: LbRow[] = [];
   for (const l of aws.loadBalancers) {
     const refs = dedupeRefs([
       ...(hostIndex.get(l.dnsName.toLowerCase()) ?? []),
       ...l.tagRefs,
     ]);
-    const member =
-      refs.length > 0 ||
-      (input.clusterName !== null && l.clusterTags.includes(input.clusterName));
+    const hasClusterTag =
+      input.clusterName !== null && l.clusterTags.includes(input.clusterName);
+    const member = refs.length > 0 || hasClusterTag;
     if (!member) {
       bumpOut('lb');
       continue;
     }
     const p = prices.lb[l.lbType] ?? null;
     const usdPerHour = p ? r6(p.usd) : null;
-    lb.push({
+    const row: LbRow = {
       key: `lb:${l.name}`,
       name: l.name,
       lbType: l.lbType,
@@ -285,29 +342,54 @@ export function computeEstimate(input: EstimateInput): EstimateComputation {
       usdPerHour,
       usdPerMonth: perMonth(usdPerHour),
       notes: p ? [] : [NOTE_UNPRICED],
+    };
+    if (hasClusterTag && refs.length === 0) apiLbCandidates.push(row);
+    else lb.push(row);
+  }
+  const apiLbState: 'assumed' | 'ambiguous' | 'not_found' =
+    apiLbCandidates.length === 0
+      ? 'not_found'
+      : apiLbCandidates.length === 1
+        ? 'assumed'
+        : 'ambiguous';
+  for (const row of apiLbCandidates) {
+    cp.push({
+      key: `cp:${row.key}`,
+      kind: 'api_lb',
+      name: row.name,
+      lbType: row.lbType,
+      attachedTo: row.attachedTo,
+      healthyTargets: row.healthyTargets,
+      identification: {
+        confidence: apiLbState === 'ambiguous' ? 'ambiguous' : 'assumed',
+        matchedBy: ['cluster_tag', 'no_service_or_ingress_ownership'],
+        candidateCount: apiLbCandidates.length,
+      },
+      priced: row.priced,
+      unitPrice: row.unitPrice,
+      usdPerHour: row.usdPerHour,
+      usdPerMonth: row.usdPerMonth,
+      notes: [
+        ...row.notes,
+        apiLbState === 'ambiguous'
+          ? {
+              code: 'API_LB_AMBIGUOUS',
+              text: `API 서버 LB 후보 ${apiLbCandidates.length}개 — 확인 필요`,
+            }
+          : { code: 'API_LB_ASSUMED', text: 'API 서버 LB로 추정' },
+      ],
     });
   }
-
-  // -------------------------------------------------------------- EKS
-  const eks: EksRow[] = [];
-  if (aws.eks) {
-    const tier = input.eksSupportTier;
-    const p = prices.eks[tier];
-    const usdPerHour = p ? r6(p.usd) : null;
-    eks.push({
-      key: `eks:${aws.eks.name}`,
-      clusterName: aws.eks.name,
-      version: aws.eks.version,
-      supportTier: tier,
-      priced: p !== null,
-      unitPrice: p
-        ? { usdPerHour: p.usd, source: 'pricing_api', asOf: p.fetchedAt }
-        : null,
-      usdPerHour,
-      usdPerMonth: perMonth(usdPerHour),
-      notes: p ? [] : [NOTE_UNPRICED],
-    });
-  }
+  const apiLbInfo = {
+    state: apiLbState,
+    candidateCount: apiLbCandidates.length,
+    text:
+      apiLbState === 'assumed'
+        ? 'API 서버 LB로 추정 (1개)'
+        : apiLbState === 'ambiguous'
+          ? `API 서버 LB 후보 ${apiLbCandidates.length}개 — 확인 필요`
+          : 'API 서버 LB를 찾지 못했습니다 (내부 LB이거나 LB 없는 구성일 수 있습니다)',
+  };
 
   // -------------------------------------------------------------- 합계
   const rowsByCat: Record<CostCategory, { usdPerHour: number | null }[]> = {
@@ -315,7 +397,7 @@ export function computeEstimate(input: EstimateInput): EstimateComputation {
     ebs,
     lb,
     ipv4,
-    eks,
+    controlPlane: cp,
   };
   const catSums = COST_CATEGORIES.map((c) => {
     const rows = rowsByCat[c];
@@ -328,15 +410,44 @@ export function computeEstimate(input: EstimateInput): EstimateComputation {
     };
   });
   const totalHour = catSums.reduce((s, c) => s + c.sum, 0);
-  const categories: CategoryRow[] = catSums.map((c) => ({
-    category: c.category,
-    label: CATEGORY_LABELS[c.category],
-    count: c.count,
-    usdPerHour: r6(c.sum),
-    usdPerMonth: r6(c.sum * hoursPerMonth),
-    sharePct: totalHour > 0 ? Math.round((c.sum / totalHour) * 1000) / 10 : 0,
-    unpricedCount: c.unpriced,
-  }));
+  const categories: CategoryRow[] = catSums.map((c) => {
+    const row: CategoryRow = {
+      category: c.category,
+      label: CATEGORY_LABELS[c.category],
+      count: c.count,
+      usdPerHour: r6(c.sum),
+      usdPerMonth: r6(c.sum * hoursPerMonth),
+      sharePct: totalHour > 0 ? Math.round((c.sum / totalHour) * 1000) / 10 : 0,
+      unpricedCount: c.unpriced,
+    };
+    if (c.category !== 'controlPlane') return row;
+    row.byKind = CONTROL_PLANE_KINDS.map((kind) => {
+      const rows = cp.filter((r) => r.kind === kind);
+      const sum = rows.reduce((a, r) => a + (r.usdPerHour ?? 0), 0);
+      return {
+        kind,
+        label: CONTROL_PLANE_KIND_LABELS[kind],
+        count: rows.length,
+        usdPerHour: r6(sum),
+        usdPerMonth: r6(sum * hoursPerMonth),
+        ...(kind === 'api_lb' ? { estimated: true } : {}),
+      };
+    }).filter((k) => k.count > 0);
+    // 후보가 0개여서 api_lb 행이 없을 때도 이 객체는 항상 있다 (AC-KOPS30)
+    row.apiLb = apiLbInfo;
+    row.notes = [
+      {
+        code:
+          apiLbState === 'assumed'
+            ? 'API_LB_ASSUMED'
+            : apiLbState === 'ambiguous'
+              ? 'API_LB_AMBIGUOUS'
+              : 'API_LB_NOT_FOUND',
+        text: apiLbInfo.text,
+      },
+    ];
+    return row;
+  });
   const unpricedCount = catSums.reduce((s, c) => s + c.unpriced, 0);
   const outCount = Object.values(outOfCluster).reduce((s, n) => s + n, 0);
 
@@ -347,11 +458,17 @@ export function computeEstimate(input: EstimateInput): EstimateComputation {
       usdPerMonth: r6(totalHour * hoursPerMonth),
     },
     categories,
-    resources: { ec2, ebs, lb, ipv4, eks },
+    resources: { ec2, ebs, lb, ipv4, controlPlane: cp },
     unpricedCount,
     spotFallbackCount: ec2.filter((r) => r.spotFallback).length,
     outOfCluster: { count: outCount, byCategory: outOfCluster },
-    sampleResources: toSampleResources({ ec2, ebs, lb, ipv4, eks }),
+    sampleResources: toSampleResources({
+      ec2,
+      ebs,
+      lb,
+      ipv4,
+      controlPlane: cp,
+    }),
     nodeCount: ec2.length,
   };
 }
@@ -476,15 +593,19 @@ function toSampleResources(
       usdPerHour: r.usdPerHour,
     });
   }
-  for (const r of res.eks) {
+  for (const r of res.controlPlane) {
     if (r.usdPerHour === null) continue;
     out.push({
-      kind: 'eks',
+      kind: 'controlPlane',
       key: r.key,
-      type: r.supportTier,
-      option: r.version,
-      az: null,
+      type: r.instanceType ?? r.volumeType ?? r.lbType ?? null,
+      // 하위 종류를 option에 담는다 (급증 원인 문장이 "마스터 EC2"를 구분할 수 있게)
+      option: r.kind,
+      az: r.zone ?? null,
       usdPerHour: r.usdPerHour,
+      ...(r.sizeBytes !== undefined
+        ? { sizeGiB: Math.round(r.sizeBytes / GIB) }
+        : {}),
     });
   }
   return out;
@@ -498,7 +619,6 @@ export function emptyPriceBook(): PriceBook {
     ebs: {},
     lb: {},
     ipv4: null,
-    eks: { standard: null, extended: null },
     meta: {
       fetchedAt: null,
       cacheUsed: false,
@@ -515,13 +635,17 @@ export interface PriceNeedList {
   ebs: { volumeType: string; iops: boolean; throughput: boolean }[];
   lb: EstimateComputation['resources']['lb'][number]['lbType'][];
   ipv4: boolean;
-  eks: boolean;
 }
 
 export function priceNeedsOf(dry: EstimateComputation): PriceNeedList {
   const types = new Set<string>();
   const spot = new Map<string, { type: string; zone: string }>();
-  for (const r of dry.resources.ec2) {
+  // 컨트롤 플레인 행(마스터 EC2·etcd/루트 EBS·API LB)도 같은 단가표를 쓴다.
+  // 빠뜨리면 마스터가 통째로 "단가 없음"이 된다.
+  const cpEc2 = dry.resources.controlPlane.filter(
+    (r) => r.kind === 'master_ec2',
+  );
+  for (const r of [...dry.resources.ec2, ...cpEc2]) {
     if (!r.instanceType) continue;
     types.add(r.instanceType);
     if (r.capacityType === 'spot' && r.zone)
@@ -534,7 +658,11 @@ export function priceNeedsOf(dry: EstimateComputation): PriceNeedList {
     string,
     { volumeType: string; iops: boolean; throughput: boolean }
   >();
-  for (const v of dry.resources.ebs) {
+  const cpEbs = dry.resources.controlPlane.filter(
+    (r) => r.volumeType !== undefined,
+  ) as (EstimateComputation['resources']['ebs'][number] &
+    EstimateComputation['resources']['controlPlane'][number])[];
+  for (const v of [...dry.resources.ebs, ...cpEbs]) {
     const cur = ebs.get(v.volumeType) ?? {
       volumeType: v.volumeType,
       iops: false,
@@ -549,8 +677,16 @@ export function priceNeedsOf(dry: EstimateComputation): PriceNeedList {
     instanceTypes: [...types],
     spot: [...spot.values()],
     ebs: [...ebs.values()],
-    lb: [...new Set(dry.resources.lb.map((l) => l.lbType))],
-    ipv4: dry.resources.ipv4.length > 0,
-    eks: dry.resources.eks.length > 0,
+    lb: [
+      ...new Set([
+        ...dry.resources.lb.map((l) => l.lbType),
+        ...dry.resources.controlPlane
+          .map((r) => r.lbType)
+          .filter((t): t is NonNullable<typeof t> => t !== undefined),
+      ]),
+    ],
+    ipv4:
+      dry.resources.ipv4.length > 0 ||
+      dry.resources.controlPlane.some((r) => r.kind === 'master_ipv4'),
   };
 }

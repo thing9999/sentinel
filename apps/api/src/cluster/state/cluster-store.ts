@@ -116,6 +116,15 @@ export class PodHistory {
     if (e) e.deletedAt = now;
   }
 
+  /**
+   * 최근 삭제 시각 (모르면 null). `prune()`이 1시간 뒤 지우므로 "최근 삭제 캐시"다.
+   * `logs`의 `pod.deletedAt`과 `alerts`의 `logTarget.gone`이 **같은 캐시**를 읽는다
+   * (docs/api/logs.md 2.1.2, docs/api/alerts.md 2.2.1). 쿠버네티스를 새로 부르지 않는다.
+   */
+  deletedAtOf(namespace: string, name: string): number | null {
+    return this.map.get(podKey(namespace, name))?.deletedAt ?? null;
+  }
+
   /** 기간 안 재시작 증가분과 실제 관측 구간(초) */
   restartsWithin(
     key: string,
@@ -148,6 +157,27 @@ export class PodHistory {
 
   lastOwner(key: string): string | null {
     return this.map.get(key)?.lastOwnerWorkloadKey ?? null;
+  }
+
+  /**
+   * 이 워크로드 소속이었다가 **최근 삭제된** 파드 (최근 삭제 캐시, 1시간). 새것 먼저.
+   * `logs`의 워크로드 합쳐보기(stack)가 "사라진 파드"까지 넣을 때 쓴다 — 쿠버네티스를 새로 부르지 않는다.
+   */
+  deletedPodsOf(
+    workloadKey: string,
+  ): { namespace: string; name: string; deletedAt: number }[] {
+    const out: { namespace: string; name: string; deletedAt: number }[] = [];
+    for (const [key, e] of this.map) {
+      if (e.deletedAt === null || e.lastOwnerWorkloadKey !== workloadKey)
+        continue;
+      const slash = key.indexOf('/');
+      out.push({
+        namespace: key.slice(0, slash),
+        name: key.slice(slash + 1),
+        deletedAt: e.deletedAt,
+      });
+    }
+    return out.sort((a, b) => b.deletedAt - a.deletedAt);
   }
 
   /** 24시간 지난 표본·삭제된 파드 정리 */

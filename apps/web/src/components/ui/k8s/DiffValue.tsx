@@ -24,22 +24,42 @@ export const MASKED_DEFAULT_TOOLTIP = "운영 값이라 가립니다. 스냅샷 
 export interface MaskedValueProps {
   /** 서버가 가린 문자열. 화면은 원문을 찾거나 다시 만들지 않는다 */
   text: string;
+  /**
+   * `box`(기본) = 종전 모양(아이콘 + 상자). `inline` = 로그 줄 안에 섞이는 조각 (components.md 21.4).
+   * `inline` 은 **아이콘이 없다** — 한 줄에 여러 개가 와도 줄 높이 20px 을 넘지 않아야 한다.
+   */
+  variant?: "box" | "inline";
   tooltip?: string;
   className?: string;
 }
 
 /**
- * components.md 14.8 / status.md 10.5. neutral 상자 + 1px dashed border.default + `eye-off`.
- * warn 색을 쓰지 않는다(이 화면에서 warn 은 "차이 있음"). 복사 버튼 없음.
+ * components.md 14.8·21.4 / status.md 10.5·13.4. neutral 상자 + 1px dashed border.default.
+ * warn 색을 쓰지 않는다(가려진 것은 문제가 아니라 설계대로 동작한 결과다). **두 variant 모두 복사 버튼이 없다.**
  */
-export function MaskedValue({ text, tooltip = MASKED_DEFAULT_TOOLTIP, className }: MaskedValueProps) {
+export function MaskedValue({
+  text,
+  variant = "box",
+  tooltip = MASKED_DEFAULT_TOOLTIP,
+  className,
+}: MaskedValueProps) {
+  const inline = variant === "inline";
+  const body = (
+    <span
+      className={cx(inline ? styles.maskedInline : styles.masked, className)}
+      data-masked="true"
+      data-variant={variant}
+    >
+      {inline ? null : <Icon name="eye-off" size={12} className={styles.fgTertiary} />}
+      <span className="sr-only">가린 값, </span>
+      <span className={inline ? styles.maskedInlineText : styles.maskedText}>{text}</span>
+    </span>
+  );
+  // inline 은 툴팁 래퍼(inline-flex)를 두지 않는다 — 줄 안에서 글자처럼 흘러야 한다
+  if (inline) return body;
   return (
     <Tooltip content={tooltip} className={styles.maskedAnchor}>
-      <span className={cx(styles.masked, className)} data-masked="true">
-        <Icon name="eye-off" size={12} className={styles.fgTertiary} />
-        <span className="sr-only">가린 값, </span>
-        <span className={styles.maskedText}>{text}</span>
-      </span>
+      {body}
     </Tooltip>
   );
 }

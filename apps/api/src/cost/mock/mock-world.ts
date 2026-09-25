@@ -11,7 +11,6 @@
  */
 import {
   instanceIdFromProviderId,
-  k8sMinorVersion,
   type ClusterInventorySnapshot,
   type InventoryLbAttachment,
   type InventoryNode,
@@ -109,7 +108,7 @@ export const COST_SCENARIO_OPTIONS: readonly {
   { id: 'no-budget', label: '예산 미설정', description: '예산 영역 숨김' },
 ];
 
-export const MOCK_CLUSTER_NAME = 'prod-eks';
+export const MOCK_CLUSTER_NAME = 'prod.k8s.example.com';
 export const MOCK_REGION = 'ap-northeast-2';
 const GI = 1024 ** 3;
 
@@ -443,6 +442,7 @@ export function buildMockWorld(
     capacityType: n.capacity,
     zone: n.zone,
     nodeGroup: n.group,
+    role: 'worker' as const,
     architecture: n.arch,
     allocatable: {
       cpuMillicores: n.cpu,
@@ -542,7 +542,6 @@ export function buildMockWorld(
       instances,
       volumes,
       loadBalancers: lbs,
-      eks: { name: MOCK_CLUSTER_NAME, version: '1.34' },
     },
   };
 }
@@ -653,6 +652,7 @@ function buildMockWorldFromCluster(
       capacityType: n.capacity,
       zone: n.zone,
       nodeGroup: n.group,
+      role: 'worker' as const,
       architecture: n.arch,
       allocatable: {
         cpuMillicores: n.cpu,
@@ -671,7 +671,9 @@ function buildMockWorldFromCluster(
     zone: n.zone,
     lifecycle: n.capacityType === 'spot' ? 'spot' : 'on_demand',
     architecture: n.architecture,
-    publicIpv4Count: n.capacityType === 'spot' ? 1 : 0,
+    // kOps 퍼블릭 토폴로지: 마스터에도 퍼블릭 IPv4가 붙는다
+    publicIpv4Count:
+      n.role === 'control_plane' || n.capacityType === 'spot' ? 1 : 0,
     rootVolumeIds: [`vol-0root${String(i + 1).padStart(12, '0')}`],
     nodeGroupTag: n.nodeGroup,
   }));
@@ -692,6 +694,28 @@ function buildMockWorldFromCluster(
     pvcName: null,
     csiManaged: false,
   }));
+  // etcd 볼륨: kOps 마스터마다 main/events 2개 (기본 gp3 20GB, 명세 F6)
+  invNodes.forEach((n, i) => {
+    if (n.role !== 'control_plane') return;
+    const inst = instances[i];
+    for (const which of ['main', 'events']) {
+      volumes.push({
+        volumeId: `vol-0etcd${which === 'main' ? 'm' : 'e'}${String(
+          i + 1,
+        ).padStart(11, '0')}`,
+        volumeType: 'gp3',
+        sizeGiB: 20,
+        iops: 3000,
+        throughputMibps: 125,
+        zone: inst.zone,
+        state: 'in-use',
+        attachedInstanceIds: [inst.instanceId],
+        pvcNamespace: null,
+        pvcName: null,
+        csiManaged: false,
+      });
+    }
+  });
   for (const p of base.pvcs) {
     if (p.phase === 'Pending' || p.phase === 'Lost' || !p.sizeBytes) continue;
     const type =
@@ -778,11 +802,6 @@ function buildMockWorldFromCluster(
       instances,
       volumes,
       loadBalancers: lbs,
-      // EKS 지원 등급은 클러스터 버전 기준 (없으면 자체 세계와 같은 1.34)
-      eks: {
-        name: MOCK_CLUSTER_NAME,
-        version: k8sMinorVersion(base.kubernetesVersion ?? null) ?? '1.34',
-      },
     },
   };
 }
@@ -792,6 +811,8 @@ function buildMockWorldFromCluster(
 // ---------------------------------------------------------------------------
 
 export const MOCK_ON_DEMAND: Record<string, number> = {
+  // 컨트롤 플레인(마스터) 기본 타입 — kOps 마스터는 사용자 소유 EC2다
+  't3.medium': 0.052,
   'm6i.large': 0.118,
   'm6i.xlarge': 0.236,
   'm6i.2xlarge': 0.472,
@@ -859,7 +880,6 @@ export function mockPriceBook(
     },
     lb: { alb: q(0.0225), nlb: q(0.0225) },
     ipv4: q(0.005),
-    eks: { standard: q(0.1), extended: q(0.6) },
     meta: {
       fetchedAt: pricingAt,
       cacheUsed: false,

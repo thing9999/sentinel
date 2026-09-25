@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { buildFixtures } from "./__fixtures__/fixtures";
 import { filterSuggestions, resultReason, runDisabledText, runSteps, suggestionToCard } from "./architecture-advisor/mapping";
-import { comparePodsDefault, countByStatus, hrefForRef, nodeUsage, parseSort, reasonStatus, sortRows } from "./cluster-status/selectors";
+import { comparePodsDefault, countByStatus, hrefForRef, nodeUsage, parseRoleFilter, parseSort, reasonStatus, sortRows, splitByRole } from "./cluster-status/selectors";
 import { holdOrder } from "./common/useStableOrder";
 import { toBadgeScenarios } from "./shell/mock-scenarios";
 import { navItemsFromOverview } from "./shell/nav";
@@ -59,7 +59,41 @@ describe("cluster 선택자", () => {
   });
 
   it("상태별 개수는 서버 판단 값을 세기만 한다", () => {
-    expect(countByStatus(fx.clusterSnapshot.nodes, (n) => n.status)).toEqual({ all: 6, crit: 1, warn: 1, ok: 4, unknown: 0 });
+    expect(countByStatus(fx.clusterSnapshot.nodes, (n) => n.status)).toEqual({ all: 9, crit: 2, warn: 2, ok: 5, unknown: 0 });
+  });
+
+  it("역할 분류는 서버 role 만 본다 — 워커/마스터/전체 (AC-KOPS10~11)", () => {
+    const byRole = splitByRole(fx.clusterSnapshot.nodes);
+    expect(byRole.worker).toHaveLength(6);
+    expect(byRole.control_plane).toHaveLength(3);
+    expect(byRole.all).toHaveLength(9);
+    // 전체 = 워커 + 마스터 (같은 목록을 나눈 값이라 화면이 따로 더하지 않는다)
+    expect(byRole.all.length).toBe(byRole.worker.length + byRole.control_plane.length);
+    expect(byRole.control_plane.every((n) => n.role === "control_plane")).toBe(true);
+  });
+
+  it("role 쿼리 기본값은 worker, 모르는 값도 worker (계약 3.1)", () => {
+    expect(parseRoleFilter(null)).toBe("worker");
+    expect(parseRoleFilter("worker")).toBe("worker");
+    expect(parseRoleFilter("control_plane")).toBe("control_plane");
+    expect(parseRoleFilter("all")).toBe("all");
+    expect(parseRoleFilter("master")).toBe("worker");
+  });
+
+  it("클러스터 합계와 컨트롤 플레인 블록을 더하지 않는다 (AC-KOPS12)", () => {
+    const m = fx.metricsSnapshot.cluster;
+    expect(m.scope.basis).toBe("worker");
+    expect(m.scope.workerNodeCount).toBe(6);
+    expect(m.scope.controlPlaneNodeCount).toBe(3);
+    // 워커 6대 × 1930m. 마스터 allocatable 이 섞여 있으면 이 값이 커진다
+    expect(m.cpu.allocatableMillicores).toBe(6 * 1930);
+    expect(m.controlPlane.nodeCount).toBe(3);
+  });
+
+  it("배분 breakdown 은 controlPlaneUsdPerHour 다 (구 eksUsdPerHour 없음)", () => {
+    const shared = fx.cost.allocation.pinnedRows.find((r) => r.key === "shared_cluster");
+    expect(shared?.breakdown.controlPlaneUsdPerHour).toBeGreaterThan(0);
+    expect(Object.keys(shared?.breakdown ?? {})).not.toContain("eksUsdPerHour");
   });
 
   it("막대 색은 서버 이유 코드의 등급 (없으면 ok)", () => {

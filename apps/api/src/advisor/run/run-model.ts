@@ -237,10 +237,22 @@ export function computeFreshness(
   }
   const prev = r.snapshotSummary;
   if (prev && current) {
-    if (prev.nodeCount !== current.nodeCount) {
+    // 워커 수와 마스터 수를 **각각** 알린다. 마스터 수 변화는 워커보다 중요한 신호(쿼럼)라
+    // 한 문장에 뭉뚱그리면 안 된다 (kops-support PM 결정 2026-09-24).
+    // 옛 실행 기록(JSON)에는 이 필드가 없을 수 있으므로 둘 다 숫자일 때만 비교한다.
+    const changed = (a: unknown, b: unknown): boolean =>
+      typeof a === 'number' && typeof b === 'number' && a !== b;
+    if (changed(prev.workerCount, current.workerCount)) {
       reasons.push({
-        code: 'NODE_COUNT_CHANGED',
-        text: `분석 후 노드 수가 ${prev.nodeCount} → ${current.nodeCount}로 바뀌었습니다`,
+        code: 'WORKER_COUNT_CHANGED',
+        text: `분석 후 워커 노드 수가 ${prev.workerCount} → ${current.workerCount}로 바뀌었습니다`,
+        status: 'warning',
+      });
+    }
+    if (changed(prev.controlPlaneCount, current.controlPlaneCount)) {
+      reasons.push({
+        code: 'CONTROL_PLANE_COUNT_CHANGED',
+        text: `분석 후 마스터 노드 수가 ${prev.controlPlaneCount} → ${current.controlPlaneCount}로 바뀌었습니다`,
         status: 'warning',
       });
     }

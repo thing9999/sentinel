@@ -251,10 +251,17 @@ describe('AdvisorRunService (가짜 브리지)', () => {
       const body = t.fake.adviseBodies[0];
       expect(body).toMatchObject({
         runId: first.run.id,
-        promptVersion: 'advisor-v1',
+        promptVersion: 'advisor-v2',
         limits: { maxTurns: 5, maxBudgetUsd: 2 },
       });
-      expect(JSON.stringify(body.snapshot)).not.toContain('ip-10-0-');
+      // AC-KOPS44: 저장·전송되는 스냅샷에 노드 이름 원문이 없다 (IP 형태·인스턴스 ID 모두)
+      const sentText = JSON.stringify(body.snapshot);
+      expect(sentText).not.toContain('ip-10-0-');
+      expect(sentText.match(/i-[0-9a-f]{8,17}/gi)).toBeNull();
+      const stored = JSON.stringify(
+        (await t.runs.snapshotOf(first.run.id)).snapshot,
+      );
+      expect(stored.match(/i-[0-9a-f]{8,17}/gi)).toBeNull();
       // 이력(메모리)과 최신 결과
       const ov = await t.advisor.overview();
       expect(ov.persistence).toBe('memory');

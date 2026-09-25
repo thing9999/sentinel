@@ -46,11 +46,11 @@ describe("StreamClient (단일 연결 공유)", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("시작하면 기본 토픽(overview·snapshot-menu)으로 연결하고, hello 를 받으면 open", () => {
+  it("시작하면 기본 토픽(overview·snapshot-menu·alerts)으로 연결하고, hello 를 받으면 open", () => {
     const { client } = makeClient();
     client.start();
     expect(FakeES.all).toHaveLength(1);
-    expect(topicsOf(FakeES.all[0].url)).toBe("overview,snapshot-menu");
+    expect(topicsOf(FakeES.all[0].url)).toBe("overview,snapshot-menu,alerts");
     expect(client.getSnapshot().connection.phase).toBe("connecting");
     FakeES.all[0].emit("stream.hello", buildFixtures(Date.now()).hello);
     expect(client.getSnapshot().connection.phase).toBe("open");
@@ -65,7 +65,7 @@ describe("StreamClient (단일 연결 공유)", () => {
     const release = client.retain(["cluster", "metrics"]);
     expect(FakeES.all).toHaveLength(2);
     expect(FakeES.all[0].closed).toBe(true);
-    expect(topicsOf(FakeES.all[1].url)).toBe("overview,cluster,metrics,snapshot-menu");
+    expect(topicsOf(FakeES.all[1].url)).toBe("overview,cluster,metrics,snapshot-menu,alerts");
     expect(client.getSnapshot().connection.phase).toBe("switching");
     expect(deriveConnectionView(client.getSnapshot().connection, Date.now()).indicator).toBe("open");
 
@@ -78,7 +78,7 @@ describe("StreamClient (단일 연결 공유)", () => {
     release();
     vi.advanceTimersByTime(LINGER_MS + 10);
     expect(FakeES.all).toHaveLength(3);
-    expect(topicsOf(FakeES.all[2].url)).toBe("overview,cluster,snapshot-menu");
+    expect(topicsOf(FakeES.all[2].url)).toBe("overview,cluster,snapshot-menu,alerts");
     release2();
     client.stop();
   });

@@ -57,7 +57,8 @@ describe('buildAdvisorSnapshot', () => {
       ],
     ).toBe(REDACTED);
     // 요약
-    expect(b.summary.nodeCount).toBe(6);
+    expect(b.summary.workerCount).toBe(6);
+    expect(b.summary.controlPlaneCount).toBe(3);
     expect(b.summary.instanceTypes).toEqual([
       { type: 'm6i.large', count: 4 },
       { type: 'm6i.xlarge', count: 2 },

@@ -31,6 +31,11 @@ export interface StatusCardProps {
   status: Status;
   /** 대표 수치 (metricMd) 예 `Ready 5/6` */
   primary: ReactNode;
+  /**
+   * primary 바로 아래 caption 한 줄 (`필수 구성요소 15/15`, components.md 19.1).
+   * `counts` 와 같은 자리라 **동시에 쓰지 않는다**(둘 다 오면 primarySub 를 그리고 콘솔 경고).
+   */
+  primarySub?: ReactNode;
   /** `장애 2 · 주의 3 · 정상 51` */
   counts?: { status: Status; count: number }[];
   /** ReasonText (items 가 없을 때 2줄) */
@@ -63,6 +68,7 @@ export function StatusCard({
   icon,
   status,
   primary,
+  primarySub,
   counts,
   reason,
   items,
@@ -78,6 +84,11 @@ export function StatusCard({
 }: StatusCardProps) {
   const H = `h${headingLevel}` as const;
   const stale = Boolean(staleAt) && state === "ready";
+  // components.md 19.1: 같은 자리라 둘 다 그리면 카드 176px 을 넘는다
+  const showCounts = counts && counts.length > 0 && primarySub === undefined;
+  if (process.env.NODE_ENV !== "production" && primarySub !== undefined && counts && counts.length > 0) {
+    console.warn("[StatusCard] primarySub 와 counts 는 같은 자리다. primarySub 만 그린다 (components.md 19.1)");
+  }
 
   if (state === "loading") {
     return (
@@ -125,7 +136,7 @@ export function StatusCard({
         <>
           <div className={styles.cardPrimaryRow}>
             <span className={cx(styles.cardPrimary, stale && styles.staleValue)}>{primary}</span>
-            {counts && counts.length > 0 ? (
+            {showCounts ? (
               <span className={styles.counts}>
                 {counts.map((c, i) => (
                   <span key={c.status} className={cx(styles.countItem, c.count === 0 && styles.countZero)}>
@@ -139,6 +150,10 @@ export function StatusCard({
               </span>
             ) : null}
           </div>
+
+          {primarySub !== undefined ? (
+            <p className={cx(styles.cardPrimarySub, stale && styles.staleValue)}>{primarySub}</p>
+          ) : null}
 
           {items && items.length > 0 ? (
             <ul className={styles.cardItems}>

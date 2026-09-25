@@ -24,6 +24,7 @@ function pctOrNull(part: number, whole: number | null): number | null {
  * 사용량 표본 수집 결과를 MetricsStore에 반영한다 (live·mock 공용).
  * - 사용률 지표에 연속 N회 지속 조건 적용 (명세 3.0)
  * - 최근 1시간 추이 표본 추가 (클러스터·노드·파드)
+ * - 클러스터 합계·추이는 **워커 노드만** 합산한다 (kops-support 3.1, AC-KOPS13)
  */
 @Injectable()
 export class MetricsIngestor {
@@ -58,15 +59,22 @@ export class MetricsIngestor {
     let useCpu = 0;
     let useMem = 0;
     for (const n of this.store.nodes.values()) {
-      allocCpu += n.allocatable.cpuMillicores;
-      allocMem += n.allocatable.memoryBytes;
+      // 클러스터 추이(target=cluster)는 **워커 기준**이다 (AC-KOPS13).
+      // 노드 단위 추이는 마스터도 그대로 쌓는다.
+      const isWorker = n.role !== 'control_plane';
+      if (isWorker) {
+        allocCpu += n.allocatable.cpuMillicores;
+        allocMem += n.allocatable.memoryBytes;
+      }
       const u = nodes.get(n.name);
       if (!u) {
         m.series.push(`node:${n.name}`, nullPoint(at));
         continue;
       }
-      useCpu += u.cpuMillicores;
-      useMem += u.memoryBytes;
+      if (isWorker) {
+        useCpu += u.cpuMillicores;
+        useMem += u.memoryBytes;
+      }
       const cpuPct = pctOrNull(u.cpuMillicores, n.allocatable.cpuMillicores);
       const memPct = pctOrNull(u.memoryBytes, n.allocatable.memoryBytes);
       const cpuS =

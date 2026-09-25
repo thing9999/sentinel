@@ -76,7 +76,7 @@ export function SourceUnknown({ summary }: { summary: SnapshotSummary }) {
       {setup ? <CommandLine command={setup.dockerMount} copyLabel="마운트 설정 복사" fullWidth /> : null}
       <p>② Docker 없이 실행: 저장소의 deploy/aws-snapshot/snapshots 경로를 설정으로 지정하세요.</p>
       {setup ? <CommandLine command={setup.localExample} copyLabel="설정 예시 복사" fullWidth /> : null}
-      <p>③ EKS에 배포한 대시보드에서는 이 기능을 쓰지 않습니다.</p>
+      <p>③ 클러스터 안에 배포한 대시보드에서는 이 기능을 쓰지 않습니다.</p>
     </div>
   ) : (
     <div className="stack-sm" style={{ maxWidth: 560, textAlign: "left" }}>

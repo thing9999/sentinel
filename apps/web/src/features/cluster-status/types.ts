@@ -11,9 +11,14 @@ export interface NodeUsage {
   updatedAt: IsoTime;
 }
 
+/** 노드 역할 (cluster-status.md 1.1, 2026-09-24 kops-support). kOps는 마스터도 사용자 소유 EC2라 같은 목록에 나온다 */
+export type NodeRole = "worker" | "control_plane";
+
 export interface NodeItem {
   name: string;
   status: StatusInfo;
+  /** 서버가 노드 라벨로 판정한 값. 화면이 이름·라벨로 다시 추론하지 않는다 */
+  role: NodeRole;
   instanceType: string | null;
   zone: string | null;
   nodeGroup: string | null;
@@ -50,6 +55,11 @@ export interface WorkloadItem {
   hasPdb: boolean;
   hpa: { minReplicas: number | null; maxReplicas: number; currentReplicas: number | null } | null;
   source: "watch" | "derived_from_pods";
+  /**
+   * 로그 화면 링크(계약 cluster-status 1.2 · logs 11.4). `/logs?namespace=…&workload=<key>&follow=1`.
+   * **서버 규칙 한 곳이 만든 값을 그대로** 쓴다(화면이 파라미터를 덧붙이지 않는다). `null`이면 링크를 그리지 않는다
+   */
+  logHref: string | null;
 }
 
 export interface ResourceAmounts {
@@ -84,6 +94,8 @@ export interface PodItem {
   limits: ResourceAmounts;
   memoryLimitPct: number | null;
   cpuRequestPct: number | null;
+  /** 로그 화면 링크 `/logs?namespace=…&pod=…&follow=1` (logs 11.4). 서버 값 그대로, `null`이면 그리지 않는다 */
+  logHref: string | null;
 }
 
 export interface EventItem {
@@ -97,6 +109,8 @@ export interface EventItem {
   lastSeenAt: IsoTime;
   severe: boolean;
   sourceComponent: string | null;
+  /** 대상이 파드일 때만 `/logs?namespace=…&pod=…&at=<lastSeenAt>` — "지난 시점"이라 `follow`가 없다(logs 11.4) */
+  logHref: string | null;
 }
 
 export interface PvcItem {
@@ -121,8 +135,151 @@ export interface AreaProblem {
   reason: string;
 }
 
+/** 필수 구성요소 5종. 이 순서로 매트릭스의 행을 만든다 (계약 1.6) */
+export type ControlPlaneComponentKind =
+  | "kube-apiserver"
+  | "kube-controller-manager"
+  | "kube-scheduler"
+  | "etcd-manager-main"
+  | "etcd-manager-events";
+
+/** 매트릭스 한 칸의 상태. **서버가 확정한 값**이다. 화면은 조건을 조합하지 않는다 (계약 1.6) */
+export type ControlPlaneCellState =
+  | "ok"
+  | "warning"
+  | "critical"
+  | "not_reporting"
+  | "unknown"
+  | "missing"
+  | "stale";
+
+export interface ControlPlaneComponent {
+  kind: ControlPlaneComponentKind;
+  nodeName: string;
+  podKey: string | null;
+  cellState: ControlPlaneCellState;
+  cellText: string;
+  cellDetail: string | null;
+  /** 잘리면 안 되는 전체 문장. **툴팁 없이 자르지 않는다** (디자이너 못박음) */
+  cellTooltip: string | null;
+  status: StatusInfo;
+  ready: boolean | null;
+  containers: { ready: number; total: number } | null;
+  waitingReason: string | null;
+  restarts: { last1h: number; last24h: number; total: number; observedSec: number };
+  lastTermination: { reason: string | null; exitCode: number | null; finishedAt: IsoTime | null } | null;
+  startedAt: IsoTime | null;
+  lastReportedAt: IsoTime | null;
+  clickable: boolean;
+  /**
+   * 로그 화면 링크 (docs/api/logs.md 11.3·11.4). REST 와 SSE(`cluster.snapshot`·`cluster.controlplane.updated`)가
+   * **같은 값**이다(2026-09-25 backend 결함 수정). 화면은 그대로 쓴다 — `podKey`로 만들던 폴백은 지웠다.
+   * `podKey`가 없거나(`missing`) 로그 기능이 꺼져 있거나 차단된 네임스페이스면 `null`이다.
+   */
+  logHref: string | null;
+}
+
+export interface ControlPlaneMasterItem {
+  node: NodeItem;
+  reporting: boolean;
+  lastReportedAt: IsoTime | null;
+  components: { ready: number; total: number; worst: ApiStatusValue };
+  /** `0`(없음)과 `null`(세지 못함)을 구분한다 */
+  workerPodCount: number | null;
+  reasonText: string | null;
+}
+
+/** 매트릭스 열 머리. `masters.items`와 같은 순서·길이 */
+export interface ControlPlaneColumn {
+  nodeName: string;
+  reporting: boolean;
+  lastReportedAt: IsoTime | null;
+  worst: ApiStatusValue;
+  /** 마스터 표의 `사유` 열과 **같은 서버 문자열**. 화면이 문장을 새로 만들지 않는다 */
+  reason: string | null;
+}
+
+/** GET /api/cluster/control-plane = cluster.controlplane.updated payload (계약 3.3) */
+export interface ControlPlaneBody {
+  dataSource?: DataSource;
+  generatedAt?: IsoTime;
+  found: boolean;
+  notFoundReason: { code: string; text: string } | null;
+  status: StatusInfo;
+  /** 섹션·카드에 그대로 쓰는 대표 사유 한 줄 (서버 문장) */
+  headline: string;
+  masters: {
+    ready: number;
+    total: number;
+    haExpected: boolean;
+    haStatus: "ok" | "single" | "even" | "unknown";
+    quorum: {
+      state: "ok" | "at_risk" | "lost" | "unknown";
+      requiredReady: number;
+      readyMasters: number;
+      basis: "master_node_count";
+    };
+    zones: { zone: string; count: number }[];
+    zoneSpread: "spread" | "single_zone" | "unknown";
+    /** 마스터만 합산. `/metrics`의 `controlPlane`과 같은 값. **상태 배지 없음** */
+    totals: {
+      available: boolean;
+      cpu: { allocatableMillicores: number; usageMillicores: number | null; usagePct: number | null; requestsMillicores: number; requestsPct: number } | null;
+      memory: { allocatableBytes: number; usageBytes: number | null; usagePct: number | null; requestsBytes: number; requestsPct: number } | null;
+    };
+    items: ControlPlaneMasterItem[];
+  };
+  components: {
+    requiredKinds: ControlPlaneComponentKind[];
+    ready: number;
+    total: number;
+    cellCounts: {
+      total: number;
+      ok: number;
+      warning: number;
+      critical: number;
+      notReporting: number;
+      unknown: number;
+      missing: number;
+      stale: number;
+      /** 요약의 "알 수 없음" = notReporting + unknown + missing (PM 결정). 화면이 다시 더하지 않는다 */
+      unknownTotal: number;
+    };
+    summaryText: string;
+    columns: ControlPlaneColumn[];
+    byKind: { kind: ControlPlaneComponentKind; ready: number; expected: number; status: ApiStatusValue }[];
+    /** 마스터 × 5종 **전체 칸**. 빈 칸이 없다 */
+    items: ControlPlaneComponent[];
+  };
+  others: { name: string; nodeName: string; status: ApiStatusValue; ready: boolean; restarts1h: number }[];
+  thresholds: { restarts1h: { warn: number; crit: number }; componentNotReadySec: number; masterNotReadySec: number };
+  limits: { etcdInternalMetrics: boolean; notes: { code: string; text: string }[] };
+}
+
+/**
+ * 컨트롤 플레인 영역 (cluster-status.md 2.1, 2026-09-24 kops-support).
+ * 백엔드 P3 전에는 응답에 없으므로 optional 로 둔다 — 화면은 값이 있을 때만 그린다.
+ */
+export interface ControlPlaneArea {
+  status: StatusInfo;
+  found: boolean;
+  masters: { ready: number; total: number };
+  components: { ready: number; total: number };
+  quorum: {
+    state: "ok" | "at_risk" | "lost" | "unknown";
+    requiredReady: number;
+    readyMasters: number;
+    basis: "master_node_count";
+  };
+  haExpected: boolean;
+  problems: AreaProblem[];
+}
+
 export interface Areas {
+  /** **워커 노드만**. `ready`/`total`에 마스터를 더하지 않는다 (AC-KOPS10) */
   nodes: { status: StatusInfo; ready: number; total: number; problems: AreaProblem[] };
+  /** 백엔드 P3 전에는 없다 */
+  controlPlane?: ControlPlaneArea;
   workloads: {
     status: StatusInfo;
     total: number;
@@ -144,7 +301,7 @@ export interface Areas {
   metrics: { status: StatusInfo; available: boolean };
 }
 
-export type AttentionArea = "node" | "workload" | "pod" | "event" | "db" | "pvc" | "metrics";
+export type AttentionArea = "node" | "control_plane" | "workload" | "pod" | "event" | "db" | "pvc" | "metrics";
 
 export interface AttentionItem {
   area: AttentionArea;
@@ -209,17 +366,46 @@ export interface ClusterSnapshot {
   areas: Areas;
   restartObservation: { observedSec: number; fullWindow: boolean };
   thresholds: ClusterThresholds;
+  /** 워커·마스터 **전부**. 화면이 `role`로 나눈다 (계약 8.2) */
   nodes: NodeItem[];
+  /** `GET /api/cluster/control-plane` 응답에서 dataSource·generatedAt 을 뺀 것 */
+  controlPlane: ControlPlaneBody;
   workloads: WorkloadItem[];
   pods: PodItem[];
   events: EventItem[];
   pvcs: PvcItem[];
 }
 
+/** 마스터만 합산한 블록 (cluster-status.md 7.2). `cpu`·`memory`와 **더하지 않는다** */
+export interface ControlPlaneMetricsBlock {
+  available: boolean;
+  nodeCount: number;
+  cpu: {
+    allocatableMillicores: number;
+    usageMillicores: number | null;
+    usagePct: number | null;
+    requestsMillicores: number;
+    requestsPct: number;
+    limitsMillicores: number;
+    limitsPct: number;
+  } | null;
+  memory: {
+    allocatableBytes: number;
+    usageBytes: number | null;
+    usagePct: number | null;
+    requestsBytes: number;
+    requestsPct: number;
+    limitsBytes: number;
+    limitsPct: number;
+  } | null;
+}
+
 export interface ClusterMetricsBody {
   available: boolean;
   unavailableReason: { code: string; message: string } | null;
   updatedAt: IsoTime | null;
+  /** 합계 기준. 항상 `worker` (AC-KOPS12). 화면은 "무엇의 합계인지" 문구에만 쓴다 */
+  scope: { basis: "worker"; workerNodeCount: number; controlPlaneNodeCount: number };
   cpu: {
     status: StatusInfo;
     allocatableMillicores: number;
@@ -240,6 +426,7 @@ export interface ClusterMetricsBody {
     limitsBytes: number;
     limitsPct: number;
   };
+  controlPlane: ControlPlaneMetricsBlock;
   thresholds: { cpu: Thresholds; memory: Thresholds };
   history: { source: "in_memory" | "prometheus"; maxRangeSec: number; stepSec: number; observedSec: number };
 }
@@ -294,6 +481,8 @@ export interface MetricsSeriesResponse {
   dataSource: DataSource;
   generatedAt: IsoTime;
   target: ResourceRef;
+  /** `target=cluster`일 때만 온다. 값은 항상 `{ basis: "worker" }` (AC-KOPS13) */
+  scope?: { basis: "worker" };
   range: "1h" | "6h" | "24h";
   source: "in_memory" | "prometheus";
   stepSec: number;

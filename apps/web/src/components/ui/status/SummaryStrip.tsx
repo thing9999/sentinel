@@ -135,12 +135,38 @@ export interface SummaryStripItemProps {
   /** 값 앞 16px 아이콘 */
   status?: Status;
   href?: string;
+  /** 값 아래 caption 한 줄 (`컨트롤 플레인 3/3`, components.md 19.2). 칸 최소 폭이 150px 이 된다 */
+  sub?: ReactNode;
+  /** 부제만 다른 곳으로 이동(값은 href, 부제는 subHref). href 안에 링크를 겹치지 않는다 */
+  subHref?: string;
   className?: string;
 }
 
-/** SummaryStrip 안 칸. href 가 있으면 칸 전체가 링크. */
-export function SummaryStripItem({ label, value, status, href, className }: SummaryStripItemProps) {
-  const inner = (
+/**
+ * SummaryStrip 안 칸. href 가 있으면 칸 전체가 링크.
+ * `subHref` 가 있으면 부제는 별도 링크라 칸 전체 링크 안에 넣지 않고 칸을 비링크로 그린다(링크 중첩 금지).
+ */
+export function SummaryStripItem({
+  label,
+  value,
+  status,
+  href,
+  sub,
+  subHref,
+  className,
+}: SummaryStripItemProps) {
+  let subNode: ReactNode = null;
+  if (sub !== undefined) {
+    subNode = subHref ? (
+      <Link href={subHref} className={cx(styles.stripSub, styles.stripSubLink)}>
+        {sub}
+      </Link>
+    ) : (
+      <span className={styles.stripSub}>{sub}</span>
+    );
+  }
+
+  const head = (
     <>
       <span className={styles.stripLabel}>{label}</span>
       <span className={styles.stripValue}>
@@ -149,12 +175,32 @@ export function SummaryStripItem({ label, value, status, href, className }: Summ
       </span>
     </>
   );
+
+  const cls = cx(styles.stripItem, sub !== undefined && styles.stripItemWithSub, className);
+
+  // 값·부제가 서로 다른 곳으로 가면 <a> 안에 <a> 가 되므로 값 쪽만 링크로 만든다
+  if (href && subHref) {
+    return (
+      <div className={cls}>
+        <Link href={href} className={styles.stripItemHeadLink}>
+          {head}
+        </Link>
+        {subNode}
+      </div>
+    );
+  }
   if (href) {
     return (
-      <Link href={href} className={cx(styles.stripItem, styles.stripItemLink, className)}>
-        {inner}
+      <Link href={href} className={cx(cls, styles.stripItemLink)}>
+        {head}
+        {subNode}
       </Link>
     );
   }
-  return <div className={cx(styles.stripItem, className)}>{inner}</div>;
+  return (
+    <div className={cls}>
+      {head}
+      {subNode}
+    </div>
+  );
 }

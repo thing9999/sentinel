@@ -29,6 +29,7 @@ import {
 
 import { useApi, useUrlQuery } from "../common/hooks";
 import { useStableOrder } from "../common/useStableOrder";
+import { LogLink } from "../logs/LogLink";
 import type { StreamState } from "../stream/reducer";
 import { badgeProps, reasonTexts, type StaleMark } from "../stream/stale";
 import { STATUS_SEGMENTS, statusSegmentValue } from "./NodesPage";
@@ -277,9 +278,13 @@ function WorkloadExpanded({ w, stream, now, watch }: { w: WorkloadItem; stream: 
         state={pods.length ? "ready" : "empty"}
         emptyProps={{ icon: "box", title: "소속 파드가 없습니다" }}
       />
-      <Link href={`/cluster/pods?workload=${encodeURIComponent(w.key)}`} className="text-link">
-        파드 목록에서 보기 ({formatCount(pods.length)})
-      </Link>
+      <span className="row">
+        <Link href={`/cluster/pods?workload=${encodeURIComponent(w.key)}`} className="text-link">
+          파드 목록에서 보기 ({formatCount(pods.length)})
+        </Link>
+        {/* 진입점 5: 소속 파드 선택기가 붙은 로그 화면. 서버 `logHref`(workload=…&follow=1) 그대로 */}
+        <LogLink href={w.logHref} label={`${w.kind} ${w.namespace}/${w.name} 로그 보기`} />
+      </span>
       {detail.data ? (
         detail.data.conditions.length ? (
           <KeyValueList

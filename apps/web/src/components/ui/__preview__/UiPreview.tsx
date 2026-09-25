@@ -6,6 +6,8 @@
  */
 import { useState } from "react";
 
+import { AlertsLogsPreview } from "./AlertsLogsPreview";
+import { ControlPlanePreview } from "./ControlPlanePreview";
 import { K8sSnapshotPreview } from "./K8sSnapshotPreview";
 import { Snapshot3DPreview } from "./Snapshot3DPreview";
 import { SnapshotPreview } from "./SnapshotPreview";
@@ -24,6 +26,7 @@ import {
   ConnectionIndicator,
   CostKindBadge,
   DataTable,
+  DEFAULT_NAV_FOOTER_ITEMS,
   DEFAULT_NAV_ITEMS,
   Dialog,
   DistributionBar,
@@ -192,16 +195,20 @@ export function UiPreview() {
       }
       nav={
         <SideNav
+          footerItems={DEFAULT_NAV_FOOTER_ITEMS}
           items={DEFAULT_NAV_ITEMS.map((it) =>
-            it.href === "/cluster/pods"
-              ? { ...it, status: "crit" as const }
-              : it.href === "/cluster/db"
-                ? { ...it, status: "warn" as const }
-                : it.href === "/advisor"
-                  ? { ...it, busy: true }
-                  : it.href === "/snapshots"
-                    ? { ...it, status: "crit" as const, statusLabel: "커밋 금지", count: 2 }
-                    : it,
+            it.href === "/alerts"
+              ? // 상태 점 없이 count 만 (components.md 21.1)
+                { ...it, count: 3, countTone: "crit" as const, countLabel: "안 읽음 3건" }
+              : it.href === "/cluster/pods"
+                ? { ...it, status: "crit" as const }
+                : it.href === "/cluster/db"
+                  ? { ...it, status: "warn" as const }
+                  : it.href === "/advisor"
+                    ? { ...it, busy: true }
+                    : it.href === "/snapshots"
+                      ? { ...it, status: "crit" as const, statusLabel: "커밋 금지", count: 2 }
+                      : it,
           )}
           currentPath="/cluster/pods"
           collapsed={collapsed}
@@ -513,6 +520,8 @@ export function UiPreview() {
         <SnapshotPreview />
         <K8sSnapshotPreview />
         <Snapshot3DPreview />
+        <ControlPlanePreview />
+        <AlertsLogsPreview />
       </div>
     </AppShell>
   );

@@ -6,7 +6,15 @@
 import type { PrismaClient } from './generated/prisma/client';
 import { SETTING_DEFAULTS } from './settings-defaults';
 
-export type RetentionPolicy = (typeof SETTING_DEFAULTS)['retention']['value'];
+/**
+ * 보존 정책. `SETTING_DEFAULTS.retention.value`는 `as const`라 리터럴 타입(예: `2000`)이 되므로,
+ * 호출자가 일부 값만 바꿔 넘길 수 있도록 number로 넓힌다(값은 전부 일(日)·건수·바이트 수).
+ */
+export type RetentionPolicy = {
+  -readonly [
+    K in keyof (typeof SETTING_DEFAULTS)['retention']['value']
+  ]: number;
+};
 
 export const DEFAULT_RETENTION: RetentionPolicy =
   SETTING_DEFAULTS.retention.value;
@@ -19,6 +27,7 @@ export interface RetentionCutoffs {
   costExplorerCallLogBefore: Date;
   priceCacheExpiredBefore: Date;
   advisorRunBefore: Date;
+  alertBefore: Date;
 }
 
 /** 순수 함수: 기준 시각에서 각 테이블의 삭제 기준 시각을 계산 */
@@ -33,6 +42,7 @@ export function computeRetentionCutoffs(
     costExplorerCallLogBefore: ago(policy.costExplorerCallLogDays),
     priceCacheExpiredBefore: ago(policy.priceCacheExpiredGraceDays),
     advisorRunBefore: ago(policy.advisorRunDays),
+    alertBefore: ago(policy.alertDays),
   };
 }
 
@@ -42,6 +52,7 @@ export interface PurgeResult {
   costExplorerCallLogs: number;
   priceCache: number;
   advisorRuns: number;
+  alerts: number;
 }
 
 /** 보존 기간이 지난 데이터를 지운다. 어드바이저는 "최근 N건 또는 N일" 중 먼저 닿는 쪽. */
@@ -81,13 +92,96 @@ export async function purgeExpiredData(
     },
   });
 
+  const alerts = await purgeAlerts(prisma, now, policy);
+
   return {
     costRateSamples: costRateSamples.count,
     costExplorerCache: costExplorerCache.count,
     costExplorerCallLogs: costExplorerCallLogs.count,
     priceCache: priceCache.count,
     advisorRuns: advisorRuns.count,
+    alerts,
   };
+}
+
+/** 진행 중(닫히지 않은) 알림을 만드는 종류. 이 알림은 보관 기간이 지나도 지우지 않는다. */
+const OPENABLE_ALERT_KINDS = ['transition', 'escalation', 'flapping'] as const;
+
+/**
+ * 알림 이력 정리 (alerts 3.7 "보관 기간", AC-ALERT18).
+ *
+ * - 90일(`alertDays`) 또는 **data_source별** 2,000건(`alertMaxRows`) 중 먼저 닿는 쪽.
+ *   mock 알림이 live 이력을 밀어내지 않도록 건수 상한은 data_source마다 따로 센다.
+ * - **`closed_at IS NULL`(진행 중)인 알림은 어느 기준으로도 지우지 않는다.** 지우면 나중에 오는
+ *   해제 알림이 짝을 잃는다. (종결형 kind는 만들 때 closed_at을 채우므로 여기 걸리지 않는다)
+ * - 발송 기록은 FK CASCADE로 함께 사라지고, 해제↔발생 연결은 SET NULL로 끊긴다(행은 남는다).
+ *
+ * **화면이 멎지 않게**: 한 번에 `alertPurgeBatchSize`(기본 500)행씩 나눠 지우고, 트랜잭션으로
+ * 묶지 않는다. Postgres에서 읽기는 쓰기에 막히지 않으므로(MVCC) 배지·목록 질의는 정리 중에도
+ * 그대로 응답한다. `TRUNCATE`는 ACCESS EXCLUSIVE 잠금이라 **쓰지 않는다**. `VACUUM FULL`도 없다.
+ */
+export async function purgeAlerts(
+  prisma: PrismaClient,
+  now: Date = new Date(),
+  policy: RetentionPolicy = DEFAULT_RETENTION,
+): Promise<number> {
+  const before = computeRetentionCutoffs(now, policy).alertBefore;
+  const batchSize = Math.max(1, policy.alertPurgeBatchSize);
+  /** 진행 중이 아닌 것만 (= 닫힌 알림). kind 조건은 closed_at을 빠뜨린 행까지 잡는 안전장치 */
+  const closed = {
+    OR: [
+      { closedAt: { not: null } },
+      { kind: { notIn: [...OPENABLE_ALERT_KINDS] } },
+    ],
+  };
+
+  // 한 번 호출에서 도는 배치 수 상한 (무한 루프 방지. 남은 것은 다음 주기에 지운다)
+  const maxBatches = 200;
+  let deleted = 0;
+
+  const deleteBatch = async (ids: string[]): Promise<number> => {
+    if (ids.length === 0) return 0;
+    const res = await prisma.alert.deleteMany({ where: { id: { in: ids } } });
+    return res.count;
+  };
+
+  // 1) 기간 초과 (인덱스 범위: occurred_at)
+  for (let i = 0; i < maxBatches; i += 1) {
+    const batch = await prisma.alert.findMany({
+      select: { id: true },
+      where: { occurredAt: { lt: before }, ...closed },
+      take: batchSize,
+    });
+    const count = await deleteBatch(batch.map((r) => r.id));
+    deleted += count;
+    if (count === 0) break;
+  }
+
+  // 2) 건수 초과 — data_source별로 최신 alertMaxRows건을 남기고 그 뒤를 지운다.
+  //    (mock 알림이 live 이력을 밀어내지 않게 따로 센다)
+  //    순위는 진행 중 알림까지 포함해서 매기고(= 실제 보관 건수가 상한에 맞는다), 그 중
+  //    **닫힌 것만** 지운다. 진행 중 알림은 창에 남아 다음 회차에도 그대로 보존된다.
+  for (const dataSource of ['mock', 'live'] as const) {
+    for (let i = 0; i < maxBatches; i += 1) {
+      const overflow = await prisma.alert.findMany({
+        select: { id: true },
+        where: { dataSource },
+        orderBy: { occurredAt: 'desc' },
+        skip: policy.alertMaxRows,
+        take: batchSize,
+      });
+      if (overflow.length === 0) break;
+      const res = await prisma.alert.deleteMany({
+        where: { id: { in: overflow.map((r) => r.id) }, ...closed },
+      });
+      deleted += res.count;
+      // 창이 통째로 "진행 중"이면 더 지울 것이 없다고 본다(진행 중 알림은 키 수만큼뿐이라
+      // batchSize를 채울 수 없다). 남은 것이 있어도 다음 주기에 지워진다.
+      if (res.count === 0) break;
+    }
+  }
+
+  return deleted;
 }
 
 /**

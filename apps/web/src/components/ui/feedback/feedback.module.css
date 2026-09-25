@@ -74,6 +74,77 @@
   }
 }
 
+/* ───── CollapsibleNotice (components.md 20.4) ───── */
+/*
+ * 접어도 한 줄 요약이 남는 안내. radius 6px, 패딩 8px 12px, 왼쪽 3px <tone>.solid.
+ * 닫기(x)가 없다 — 접기만 있다.
+ */
+.notice {
+  min-width: 0;
+  padding: var(--spacing-2) var(--spacing-3);
+  border-left: var(--border-width-accent) solid var(--tone-solid);
+  border-radius: var(--radius-md);
+  background: var(--tone-bg);
+  color: var(--color-text-primary);
+}
+
+.noticeTone-neutral {
+  --tone-bg: var(--color-bg-surface-sunken);
+  --tone-solid: var(--color-border-strong);
+}
+
+.noticeTone-info {
+  --tone-bg: var(--color-info-bg);
+  --tone-solid: var(--color-info-solid);
+}
+
+.noticeTone-warn {
+  --tone-bg: var(--color-status-warn-bg);
+  --tone-solid: var(--color-status-warn-solid);
+}
+
+.noticeHead {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-height: var(--size-badge-md);
+  min-width: 0;
+}
+
+.noticeIcon {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+}
+
+.noticeSummary {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: var(--font-caption-strong);
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.noticeToggle {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.noticeLines {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  margin: var(--spacing-1) 0 0;
+  padding: 0;
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+.noticeLines li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* ───── Banner / InlineAlert 공통 ───── */
 .banner,
 .inlineAlert {
@@ -257,6 +328,18 @@
   max-width: 400px;
   font: var(--font-caption);
   color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * components.md 21.6. 설명 아래 12px, caption text.tertiary, 최대 폭 400px.
+ * description 과 **무게가 다르다** — 같은 문단에 이어 붙이면 둘 다 흐려진다.
+ */
+.emptyFooter {
+  max-width: 400px;
+  margin-top: var(--spacing-3);
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
   overflow-wrap: anywhere;
 }
 

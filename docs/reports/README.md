@@ -54,3 +54,14 @@ B 후속: live 인벤토리 어댑터 **연결 완료** (build 성공, mock에�
 | 4. 구현 | backend C, dba 보완, designer 보완 | backend.md · dba.md · designer.md | **C 완료** — bridge lint·test(57)·build, api lint·tsc·test(262) 통과. 로컬 Claude Code 실제 분석 1회 성공(182.8초, 추정 $0.80, 제안 10건 스키마 통과, 취소·중복 실행 확인). Prisma 저장 경로는 실제 DB 미검증 / PM 결정 반영 완료(maxTurns 5, 지연 300초) / 개요 카드 확장점 C 진행 중 / settings 기본값 5·300 DBA 진행 중 |
 | 5. 통합 | frontend | frontend.md | 5a 완료 / 5b 진행 중 |
 | 6. 검증 | PM | | 대기 |
+
+## kops-support · 대상 환경 EKS → kOps 전환 (2026-09-24~)
+진행 현황·PM 결정 기록: [kops-support/README.md](kops-support/README.md) · 명세: [`docs/specs/kops-support.md`](../specs/kops-support.md)
+
+| 단계 | 담당 | 보고서 | 상태 |
+|---|---|---|---|
+| 1. 기획 | planner | [kops-support/planner.md](kops-support/planner.md) | 완료 — AC-KOPS01~46, 단계 P1~P5(P6 다음 범위), 열린 질문 Q1~Q9 |
+| 2~6 | | | 대기 (Q1·Q4·Q8·Q9 사용자 결정 후 착수) |
+
+PM 결정: EKS 완전 제거(플랫폼 분기 없음) / `autoscaling:*` 추가 안 함 / 컨트롤 플레인은 기존 RBAC 안 static pod 상태까지 / Q2·Q3·Q5·Q6·Q7은 planner 권고 채택.
+PM 확인: `sanitize-snapshot.ts:158`이 IP 형태가 아닌 노드 이름을 원문 통과 → kOps 노드 이름(`i-0…`)이 어드바이저로 유출되는 문제 **사실 확인**(AC-KOPS44).

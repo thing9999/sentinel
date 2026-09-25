@@ -160,7 +160,13 @@ export function DbPage() {
 
   const podCols: Column<PodItem>[] = [
     { id: "status", header: "상태", width: 112, render: (p) => <RowBadge info={p.status} mark={watch} /> },
-    { id: "name", header: "파드", minWidth: 160, render: (p) => <ResourceName name={p.name} kind="pod" maxWidth={220} /> },
+    {
+      id: "name",
+      header: "파드",
+      minWidth: 160,
+      // 진입점 7: DB 파드도 `PodItem`이라 서버 `logHref`를 그대로 쓴다(follow=1). 파드 표 4곳과 같은 아이콘 링크(21.10)
+      render: (p) => <ResourceName name={p.name} kind="pod" maxWidth={220} logHref={p.logHref} />,
+    },
     { id: "ready", header: "준비", width: 64, numeric: true, render: (p) => `${p.containers.ready}/${p.containers.total}` },
     { id: "restarts", header: "재시작(1h)", width: 88, numeric: true, render: (p) => formatCount(p.restarts.last1h) },
   ];

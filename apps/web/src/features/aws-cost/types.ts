@@ -2,9 +2,16 @@
  * docs/api/aws-cost.md 타입. 계약에 있는 필드만 둔다.
  * 금액은 서버 값 그대로 쓰고 화면에서 더하거나 계산하지 않는다.
  */
+import type { ControlPlaneCostKind, CostCategory } from "@/components/ui";
+
 import type { ApiStatusValue, DataSource, IsoTime, Money, MoneyKind, Reason, ResourceRef, StatusInfo } from "../common/types";
 
-export type CostCategory = "ec2" | "ebs" | "lb" | "ipv4" | "eks";
+/**
+ * 2026-09-24 kops-support: 카테고리 `eks` → **`controlPlane`**.
+ * 라벨·순서는 퍼블리셔가 관리하는 `@/components/ui`의 `COST_CATEGORY_*`·`CONTROL_PLANE_KIND_*` 한 곳만 쓴다.
+ */
+export type { ControlPlaneCostKind, CostCategory };
+
 export interface Unavailable {
   code: string;
   message: string;
@@ -149,10 +156,61 @@ export interface Ipv4Resource extends ResourceBase {
   count: number;
 }
 
-export interface EksResource extends ResourceBase {
-  clusterName: string;
-  version: string;
-  supportTier: "standard" | "extended";
+/**
+ * `resources.controlPlane[]` (계약 3.1). **한 배열에 여러 종류가 섞여 있고 `kind`로 구분한다.**
+ * 행 모양은 `kind`에 따라 ec2·ebs·lb·ipv4 행과 같으므로 선택 필드로 둔다.
+ */
+export interface ControlPlaneResource extends ResourceBase {
+  kind: ControlPlaneCostKind;
+  /** master_ec2 · etcd_ebs · master_root_ebs · master_ipv4 */
+  nodeName?: string;
+  /** master_ec2 */
+  instanceId?: string | null;
+  nodeGroup?: string | null;
+  instanceType?: string | null;
+  capacityType?: "on_demand" | "spot" | null;
+  zone?: string | null;
+  architecture?: string | null;
+  spotFallback?: boolean;
+  /** etcd_ebs · master_root_ebs */
+  volumeId?: string;
+  volumeType?: string;
+  sizeBytes?: number;
+  iops?: number | null;
+  throughputMibps?: number | null;
+  /** `main` | `events` | null (확실하지 않으면 null — 화면은 "etcd 볼륨"으로만 적는다) */
+  etcdCluster?: "main" | "events" | null;
+  /** api_lb */
+  name?: string;
+  lbType?: "alb" | "nlb" | "clb";
+  attachedTo?: ResourceRef[];
+  healthyTargets?: number | null;
+  identification?: { confidence: "assumed" | "ambiguous"; matchedBy: string[]; candidateCount: number };
+  /** master_ipv4 */
+  count?: number;
+}
+
+/** `controlPlane` 카테고리에만 있는 API 서버 LB 식별 결과. **후보 0개여도 항상 있다**(AC-KOPS30) */
+export interface ApiLbInfo {
+  state: "assumed" | "ambiguous" | "not_found";
+  candidateCount: number;
+  /** 화면에 그대로 찍는 서버 문장 */
+  text: string;
+}
+
+export interface CategoryRow {
+  category: CostCategory;
+  label: string;
+  count: number;
+  usdPerHour: number;
+  usdPerMonth: number;
+  sharePct: number;
+  unpricedCount: number;
+  /** `controlPlane` 카테고리에만. 순서 고정(ControlPlaneCostKind) */
+  byKind?: { kind: ControlPlaneCostKind; label: string; count: number; usdPerHour: number; usdPerMonth: number; estimated?: boolean }[];
+  /** `controlPlane` 카테고리에만 */
+  apiLb?: ApiLbInfo;
+  notes?: ResourceNote[];
 }
 
 export interface CostEstimate {
@@ -165,21 +223,13 @@ export interface CostEstimate {
   resourcesFetchedAt: IsoTime | null;
   intervalSec: number;
   total: { usdPerHour: number; usdPerDay: number; usdPerMonth: number } | null;
-  categories: {
-    category: CostCategory;
-    label: string;
-    count: number;
-    usdPerHour: number;
-    usdPerMonth: number;
-    sharePct: number;
-    unpricedCount: number;
-  }[];
+  categories: CategoryRow[];
   resources: {
     ec2: Ec2Resource[];
     ebs: EbsResource[];
     lb: LbResource[];
     ipv4: Ipv4Resource[];
-    eks: EksResource[];
+    controlPlane: ControlPlaneResource[];
   };
   pricing: {
     source: string;
@@ -201,7 +251,8 @@ export interface AllocationBreakdown {
   nodeUsdPerHour: number;
   storageUsdPerHour: number;
   lbUsdPerHour: number;
-  eksUsdPerHour?: number;
+  /** 2026-09-24 kops-support: 구 `eksUsdPerHour`. 마스터 EC2·etcd 볼륨·API LB·마스터 IPv4 (aws-cost.md 3.2) */
+  controlPlaneUsdPerHour?: number;
   ipv4UsdPerHour?: number;
 }
 

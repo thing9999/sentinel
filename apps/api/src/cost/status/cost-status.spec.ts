@@ -1,5 +1,6 @@
 import type { CeDailyResult, RateSample } from '../cost.types';
 import {
+  baselineSince,
   computeRateBaseline,
   computeSpikeCauses,
   estimateMonthEnd,
@@ -36,6 +37,40 @@ function flat(value: number, hours: number): RateSample[] {
     out.push({ sampledAt: new Date(t), totalUsdPerHour: value });
   return out;
 }
+
+describe('기준선 하한 baselineFrom (DBA 요청 5)', () => {
+  it('null이면 지금과 같은 동작 (baselineDays 전체)', () => {
+    expect(baselineSince(NOW, RATE)).toBe(NOW.getTime() - 7 * 86_400_000);
+    expect(baselineSince(NOW, { ...RATE, baselineFrom: null })).toBe(
+      NOW.getTime() - 7 * 86_400_000,
+    );
+    expect(computeRateBaseline(flat(0.6, 168), NOW, RATE).state).toBe('ready');
+  });
+
+  it('전환 시각 이후 표본만 센다 → 24시간 미만이면 "수집 중"', () => {
+    const from = new Date(NOW.getTime() - 3 * 3_600_000).toISOString();
+    const s = { ...RATE, baselineFrom: from };
+    expect(baselineSince(NOW, s)).toBe(Date.parse(from));
+    const b = computeRateBaseline(flat(0.6, 168), NOW, s);
+    // 옛 정의(전환 이전) 표본이 중앙값에 섞이지 않고, 아직 기준을 모으는 중이다
+    expect(b.state).toBe('collecting');
+    expect(b.collectedHours).toBe(3);
+    expect(b.medianUsdPerHour).toBeNull();
+  });
+
+  it('baselineFrom이 baselineDays보다 오래됐으면 baselineDays가 이긴다', () => {
+    const old = new Date(NOW.getTime() - 30 * 86_400_000).toISOString();
+    expect(baselineSince(NOW, { ...RATE, baselineFrom: old })).toBe(
+      NOW.getTime() - 7 * 86_400_000,
+    );
+  });
+
+  it('형식이 깨진 값은 무시한다 (지금 동작 유지)', () => {
+    expect(baselineSince(NOW, { ...RATE, baselineFrom: 'not-a-date' })).toBe(
+      NOW.getTime() - 7 * 86_400_000,
+    );
+  });
+});
 
 describe('급증 A: 소모율 (명세 5절 수용 기준)', () => {
   const judge = (median: number, current: number) => {

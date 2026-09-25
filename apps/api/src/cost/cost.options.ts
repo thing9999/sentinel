@@ -13,7 +13,7 @@ export interface CostOptions {
   /** 클러스터 리전. 없으면 live에서 AWS_NOT_CONFIGURED */
   awsRegion: string | null;
   awsProfile: string | null;
-  /** EKS 클러스터 이름 (eks:DescribeCluster, 태그 대조) */
+  /** kOps 클러스터 이름 (EC2 태그 `kubernetes.io/cluster/<이름>` 대조) */
   clusterName: string | null;
   /** 설정을 잠그는 환경 변수 (명시된 경우만) */
   env: {
@@ -67,7 +67,7 @@ export function buildCostOptions(
     dataSource: ds === 'live' ? 'live' : 'mock',
     awsRegion: str(get('AWS_REGION')),
     awsProfile: str(get('AWS_PROFILE')),
-    clusterName: str(get('EKS_CLUSTER_NAME')),
+    clusterName: str(get('K8S_CLUSTER_NAME')),
     env,
     timers: true,
   };

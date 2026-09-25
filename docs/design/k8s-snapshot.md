@@ -1,6 +1,6 @@
 # 화면 설계: k8s-snapshot (Kubernetes 스냅샷 + 드리프트)
 
-- 작성: designer, 2026-09-19
+- 작성: designer, 2026-09-19 / 고침: 2026-09-24 (`kops-support` — mock 클러스터 이름 `prod.k8s.example.com`·`staging.k8s.example.com`, 서버 버전 접미사 `-eks` 제거, "EKS에 배포" 문구 일반화, 클러스터 이름은 `ResourceName kind="cluster"`. 화면 구조·드리프트 규칙은 그대로)
 - 명세: `docs/specs/k8s-snapshot.md` (Q1~Q4 모두 권장안으로 확정: Q1 Secret은 읽지 않고 참조 이름만 `secret-refs.json`, Q2 드리프트는 사이드바 메뉴 상태에 넣지 않음(탭·목록에만), Q3 대시보드 RBAC 확대 없음 → RBAC 밖 종류는 "비교 불가", Q4 클러스터 ID 없는 스냅샷은 드리프트 "알 수 없음")
 - **재사용 원칙**: 목록·상세·편집기·저장 흐름·확인 창·휴지통·쓰기 불가 표시는 `docs/design/aws-snapshot-manager.md`(이하 **ASM-D**)를 그대로 쓴다. 이 문서는 **다른 점만** 정의한다. 절 번호를 적은 곳은 "ASM-D n.n 그대로"라는 뜻이다.
 - 공통: `docs/design/shell.md`(3.1 메뉴 9번 라벨 "스냅샷"), `docs/design/status.md`(1.2 드리프트 문구, 1.3 보조 라벨, 5.2 정렬, 10절 이 기능 규칙), `docs/design/components.md`(14절 새 컴포넌트, 15절 기존 컴포넌트 확장, 13절 아이콘), `docs/design/tokens.json`(**새 토큰 없음**, 이유는 `status.md` 10.6)
@@ -96,7 +96,7 @@ SnapshotTabs (LinkTabs 40px) ─────────────────
 [mock InlineAlert] [쓰기 불가 Banner]
 ┌ SummaryStrip (12열, 88px) ────────────────────────────────────────────────────────────────────────┐
 │ [⊗ 커밋 금지] 커밋 금지 1개 · 20260919-061000 …  │ 전체 │ 커밋 금지 │ 주의 │ 알 수 없음 │ 최신 드리프트 │ 마지막 확인 [↻] │
-│ 📁 deploy/k8s-snapshot/snapshots · 🖥 prod-eks     │  12  │ ⊗ 1       │ △ 3  │ ? 1        │ ▣ 차이 3건     │ 15:12:10        │
+│ 📁 deploy/k8s-snapshot/snapshots · 🖥 prod.k8s.example.com │ 12 │ ⊗ 1    │ △ 3  │ ? 1        │ ▣ 차이 3건     │ 15:12:10        │
 └───────────────────────────────────────────────────────────────────────────────────────────────────┘
 [CliGuide 펼침 영역]
 FilterBar: [파일: 전체 ▾] [드리프트: 전체 ▾] [클러스터: 전체 ▾] [🔍 라벨·메모 검색]        스냅샷 12개 중 12개 표시
@@ -110,7 +110,7 @@ FilterBar: [파일: 전체 ▾] [드리프트: 전체 ▾] [클러스터: 전체
 | 요소 | 사양 |
 |---|---|
 | 왼쪽 블록 | **파일 상태만**(ASM-D와 같음). 드리프트는 왼쪽 블록 상태에 넣지 않는다 |
-| 왼쪽 둘째 줄 | 폴더 아이콘 + 폴더 위치(최대 폭 200px → **160px**, 가운데 말줄임) + 12px + 아이콘 `server` 14px `text.tertiary` + `대시보드 클러스터` caption `text.tertiary` + 4px + 클러스터 이름 mono 12/20(최대 폭 120px 말줄임, 툴팁 `prod-eks · 컨텍스트 sentinel-prod`). 값은 `summary.dashboardCluster`(`name`, `context`). `state`가 `not_configured`/`unavailable`이면 `클러스터 연결 없음`, `syncing`이면 `클러스터 동기화 중`, `id`가 `null`이면 이름 뒤 `(확인 불가)`(모두 `text.tertiary`, 아이콘 `circle-help`). 인식하지 못한 항목 Chip은 ASM-D 그대로(자리가 모자라면 이 줄 끝에서 말줄임되지 않고 폴더 위치가 먼저 줄어든다) |
+| 왼쪽 둘째 줄 | 폴더 아이콘 + 폴더 위치(최대 폭 200px → **160px**, 가운데 말줄임) + 12px + 아이콘 `server` 14px `text.tertiary` + `대시보드 클러스터` caption `text.tertiary` + 4px + 클러스터 이름(`ResourceName kind="cluster"`, `components.md` 19.3 — FQDN이라 **뒤 8자 보존 + 앞부분은 남는 폭만큼**, 최대 폭 120px → **160px**, 툴팁 `prod.k8s.example.com · 컨텍스트 sentinel-prod`). 값은 `summary.dashboardCluster`(`name`, `context`). `state`가 `not_configured`/`unavailable`이면 `클러스터 연결 없음`, `syncing`이면 `클러스터 동기화 중`, `id`가 `null`이면 이름 뒤 `(확인 불가)`(모두 `text.tertiary`, 아이콘 `circle-help`). 인식하지 못한 항목 Chip은 ASM-D 그대로(자리가 모자라면 이 줄 끝에서 말줄임되지 않고 폴더 위치가 먼저 줄어든다) |
 | 항목 | `전체`, `커밋 금지`, `주의`, `알 수 없음` (ASM-D 그대로) + **`최신 드리프트`** |
 | `최신 드리프트` 항목 | 값: `summary.latestDrift.drift`를 `DriftStatus` size sm(14.3)으로 — `차이 3건`(warn 아이콘 16px + metricMd 숫자) / `차이 없음`(ok 아이콘) / `알 수 없음`(unknown 아이콘) / `latestDrift: null`(자동 대상 없음)이면 `—`(`text.tertiary`). 라벨 아래 줄 없음. href: 최신 스냅샷 상세 `?view=drift`. 툴팁 `20260919-061000 기준 · 15:12 계산` |
 | 폭 | 왼쪽 320px + 항목 5개(최소 120px) + 오른쪽 마지막 확인(약 180px) = 1100px 이하. 1280px 미만은 항목 최소 폭 96px(ASM-D 10절) |
@@ -121,7 +121,7 @@ FilterBar: [파일: 전체 ▾] [드리프트: 전체 ▾] [클러스터: 전체
 |---|---|
 | 파일 | MultiSelect width 184px, 버튼 문구 `파일: 전체` / `파일: 커밋 금지` / `파일: 2개`. 옵션 ASM-D 3.3 상태 옵션 그대로 |
 | 드리프트 | MultiSelect width 184px, `드리프트: 전체`. 옵션 순서와 API 값(`drift`): `차이 있음`(warn 아이콘) = `warning` → `알 수 없음`(unknown 아이콘) = `unknown` → `차이 없음`(ok 아이콘) = `ok` → `계산 안 함`(아이콘 `minus` `text.tertiary`) = `not_computed`. 개수는 `facets.drift`. `not_computed`는 지난 결과가 있는 스냅샷(`mode: last_result`)도 포함한다 |
-| 클러스터 | Select width 200px, `클러스터: 전체`. 옵션과 API 값(`cluster`): `연결된 클러스터 (prod-eks)` = `same` / `다른 클러스터` = `other` / `확인할 수 없음` = `unknown`(스냅샷 ID 없음 또는 대시보드 클러스터 ID를 모름). 개수는 `facets.cluster`. 클러스터 이름별 옵션은 두지 않는다 |
+| 클러스터 | Select width 200px, `클러스터: 전체`. 옵션과 API 값(`cluster`): `연결된 클러스터 (prod.k8s.example.com)` = `same`(이름이 길면 옵션 문구에서 가운데 말줄임, 툴팁 전체) / `다른 클러스터` = `other` / `확인할 수 없음` = `unknown`(스냅샷 ID 없음 또는 대시보드 클러스터 ID를 모름). 개수는 `facets.cluster`. 클러스터 이름별 옵션은 두지 않는다 |
 | 검색 | SearchInput width 240px, placeholder `라벨·메모·ID·컨텍스트 검색`(API `q`가 이 네 가지에 부분 일치) |
 | URL | 쿼리 이름·값을 API와 같게: `?status=critical,warning&drift=warning,not_computed&cluster=same&q=…&sort=snapshotAt:desc`. 화면 문구로 바꾸는 것은 표시 단계에서만 |
 
@@ -132,7 +132,7 @@ FilterBar: [파일: 전체 ▾] [드리프트: 전체 ▾] [클러스터: 전체
 | 파일 | 176px | StatusBadge sm (`커밋 금지`/`주의`/`알 수 없음`/`정상`) | ReasonText 1줄(ASM-D 3.4 상태·사유 열과 같음) | 가능: 나쁜 순 → 시각 최신순 |
 | 드리프트 | 160px | `DriftStatus` sm (3.5 표) | 사유: `변경 2 · 삭제 1` / `다른 클러스터` / `지난 결과 차이 3건 · 9월 18일` | **불가**(API 정렬 키는 `snapshotAt`·`status`뿐. 드리프트로 모아 보려면 필터를 쓴다) |
 | 스냅샷 | flex, 최소 168px | 로컬 시각(ASM-D 3.4와 같음) | 라벨 + 메모 아이콘(ASM-D 같음) | 가능(**기본: 최신순**) |
-| 클러스터 | 144px | 클러스터 이름(`cluster.name`, 없으면 `cluster.context`, `cluster`가 `null`이면 `—`) mono 12/20, 1줄 말줄임, 툴팁 `이름 prod-eks · 컨텍스트 sentinel-snapshot · v1.30.4-eks` | `cluster.relation`: `same` → caption `text.tertiary` `연결된 클러스터`. `other` → 아이콘 `link-2-off` 12px + `다른 클러스터`(`text.secondary`). `unknown` 또는 `cluster: null` → `circle-help` 12px + `확인할 수 없음` | 불가 |
+| 클러스터 | 144px | 클러스터 이름(`cluster.name`, 없으면 `cluster.context`, `cluster`가 `null`이면 `—`) `ResourceName kind="cluster"`(뒤 8자 보존 + 앞부분은 남는 폭만큼, `components.md` 19.3), 1줄, 툴팁 `이름 prod.k8s.example.com · 컨텍스트 sentinel-snapshot · v1.31.2` | `cluster.relation`: `same` → caption `text.tertiary` `연결된 클러스터`. `other` → 아이콘 `link-2-off` 12px + `다른 클러스터`(`text.secondary`). `unknown` 또는 `cluster: null` → `circle-help` 12px + `확인할 수 없음` | 불가 |
 | 범위 | 136px | `네임스페이스 5 · 종류 14` tabular | 규칙 요약 1줄 말줄임: `시스템 제외 전체` / `포함 app, data` / `exclude` 모드는 목록 응답에 제외 목록이 없는 동안 `일부 제외 · 내보냄 data, prod`(`scope.namespaces` = 내보낸 네임스페이스, 쉼표+공백 구분), 제외 목록 필드가 생기면 `제외 batch`. 시스템 네임스페이스 포함이면 끝에 ` · 시스템 포함`. 툴팁 전체(`exclude` 임시 문구의 툴팁: `네임스페이스 제외 규칙 사용 · 내보낸 네임스페이스: data, prod (제외 목록은 상세 메타데이터 탭)`) | 불가 |
 | 리소스 | 96px, 오른쪽 | `128` tabular. 내보내기 당시와 다르면 숫자 앞 아이콘 `pencil` 12px `text.tertiary`(툴팁 `내보내기 당시 130개`) | `직전 −2`(부호 필수 U+2212, 같은 클러스터의 이전 스냅샷 대비, 툴팁 `20260918-061000 대비`). 이전 없음 `직전 -` | 불가 |
 | 현재 스캔 | 96px | ScanCounts sm stacked(ASM-D 같음) | | 불가 |
@@ -199,7 +199,7 @@ ASM-D 3.7 표를 그대로 쓰고 문구·경로만 바꾼다.
 | 상태 | 다른 점 |
 |---|---|
 | 스냅샷 0개 | EmptyState 아이콘 `archive`, 제목 `아직 Kubernetes 스냅샷이 없습니다`, 설명 같은 문장 + CliGuide(3.6) |
-| 설정 없음 | hint ①~③의 경로를 `deploy/k8s-snapshot/snapshots`로. ③ `EKS에 배포한 대시보드에서는 이 기능을 쓰지 않습니다.` 그대로 |
+| 설정 없음 | hint ①~③의 경로를 `deploy/k8s-snapshot/snapshots`로. ③ `클러스터 안에 배포한 대시보드에서는 이 기능을 쓰지 않습니다.`(2026-09-24 `kops-support`: EKS 전제 문구를 일반화) |
 | 클러스터 연결 없음 | 목록은 그대로(파일 관리는 클러스터와 무관). 요약 띠 `최신 드리프트` = 알 수 없음, 드리프트 열 = 알 수 없음 `클러스터 연결 없음` |
 | AWS 쪽만 설정 없음 | Kubernetes 탭은 정상. AWS 탭 상태 아이콘 없음(2.1) |
 
@@ -213,7 +213,7 @@ ASM-D 3.7 표를 그대로 쓰고 문구·경로만 바꾼다.
 Kubernetes 스냅샷 › 20260919-061000                                                  (브레드크럼)
 9월 19일 15:10 스냅샷  [⊗ 커밋 금지] 비밀값 의심 1건 (k8s-env-literal)
   드리프트 [△ 차이 3건] 변경 2 · 삭제 1 · 15:12 계산  [드리프트 보기 →]                     (chips 줄)
-  ID 20260919-061000 (UTC) [⧉] · prod-eks · 컨텍스트 sentinel-snapshot · k8s-snapshot 0.1.0   [🏷 라벨·메모 편집] [🗑 삭제]
+  ID 20260919-061000 (UTC) [⧉] · prod.k8s.example.com · 컨텍스트 sentinel-snapshot · k8s-snapshot 0.1.0   [🏷 라벨·메모 편집] [🗑 삭제]
 [쓰기 불가 Banner / 내보내기 진행 중 InlineAlert — 해당 시]
 ┌ A. 요약 Card (12열) — 판단 사유 7열 │ 라벨·메모 5열 / 보조 칩 / 안내 ────────────────────────────┐
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -380,7 +380,7 @@ ASM-D 4.5의 머리(`비밀값 스캔` + 규칙 HelpPopover), 현재 스캔 요�
 ```
 ┌ NoExecuteNotice (40px) ✋ 대시보드는 kubectl 명령을 실행하지 않습니다. 적용 전 kubectl diff로 확인하세요. ┐
 ┌ A. DriftSummary Card (12열) ─────────────────────────────────────────────────────────────────┐
-│ [△ 차이 3건] 변경 2 · 삭제 1               15:12:04 계산 · 비교 대상 prod-eks (sentinel-prod)       │
+│ [△ 차이 3건] 변경 2 · 삭제 1        15:12:04 계산 · 비교 대상 prod.k8s.example.com (sentinel-prod) │
 │                                            자동 계산 · 클러스터 변경은 30초 안에 반영                │
 │ ─────────────────────────────────────────────────────────────────────────────────────────── │
 │ 변경 │ 삭제 │ 추가 │ 같음 │ 비교한 리소스                                                           │
@@ -515,7 +515,7 @@ Card padding lg(20px). 줄 사이 1px `border.subtle` + 위아래 16px.
 | 알 수 없음 · 클러스터 연결 없음 (`CLUSTER_NOT_CONNECTED`) | 6.2 안내 + UnknownState lg: 제목 `알 수 없음 (클러스터 연결 없음)`, 사유(서버 `text`), hint `대시보드가 클러스터에 연결되면 다시 계산합니다.` 계산 버튼 없음 |
 | 알 수 없음 · 클러스터 동기화 중 (`CLUSTER_SYNCING`) | UnknownState lg `icon="hourglass"`(`status.unknown.fg`, components 6.4): 제목 `알 수 없음 (클러스터 동기화 중)`, 사유 `대시보드가 클러스터 리소스 목록을 처음 읽는 중입니다.`, hint `끝나면 최신 스냅샷은 자동으로 계산하고, 이 버튼도 쓸 수 있게 됩니다. 일부 종류만 읽은 상태로 비교하면 삭제됨이 잘못 나올 수 있어 기다립니다.` + `드리프트 계산` primary md aria-disabled, 사유 `클러스터 동기화 중` |
 | 알 수 없음 · 대시보드 클러스터 확인 불가 (`DASHBOARD_CLUSTER_UNKNOWN`) | UnknownState lg: 제목 `알 수 없음 (대시보드가 연결된 클러스터를 확인할 수 없음)`, 사유 서버 `text`(예 `대시보드 클러스터를 확인할 수 없음 (namespaces 조회 불가)`), hint `대시보드가 kube-system 네임스페이스를 읽지 못해 어느 클러스터에 연결됐는지 모릅니다. 다른 클러스터와 잘못 비교하지 않도록 계산하지 않습니다. deploy/rbac.yaml의 namespaces 읽기 권한과 클러스터 연결을 확인하세요.` + 버튼 aria-disabled, 사유 `대시보드가 연결된 클러스터를 확인할 수 없음` |
-| 알 수 없음 · 다른 클러스터 | UnknownState lg: 제목 `알 수 없음 (다른 클러스터의 스냅샷)`, 사유 KeyValueList 1열 labelWidth 120px: `스냅샷` `staging-eks`(mono) · `대시보드` `prod-eks`(mono), hint `다른 클러스터의 스냅샷은 비교하지 않습니다. 파일 보기·편집·삭제는 할 수 있습니다.` + `드리프트 계산` primary md **aria-disabled**, 사유 `다른 클러스터의 스냅샷` |
+| 알 수 없음 · 다른 클러스터 | UnknownState lg: 제목 `알 수 없음 (다른 클러스터의 스냅샷)`, 사유 KeyValueList 1열 labelWidth 120px: `스냅샷` `staging.k8s.example.com` · `대시보드` `prod.k8s.example.com`(둘 다 `ResourceName kind="cluster"`), hint `다른 클러스터의 스냅샷은 비교하지 않습니다. 파일 보기·편집·삭제는 할 수 있습니다.` + `드리프트 계산` primary md **aria-disabled**, 사유 `다른 클러스터의 스냅샷` |
 | 알 수 없음 · 스냅샷 클러스터 확인 불가(Q4, `CLUSTER_ID_MISSING`) | UnknownState lg: 제목 `알 수 없음 (스냅샷의 클러스터를 확인할 수 없음)`, 사유 `metadata.json에 클러스터 ID가 없습니다 (없음·손상·형식 다름).`, hint `잘못된 클러스터와 비교하면 전부 추가·삭제로 보일 수 있어 계산하지 않습니다. metadata.json을 먼저 확인하세요.` + 버튼 aria-disabled 사유 `클러스터를 확인할 수 없음` + 링크 버튼 `메타데이터 보기` |
 | 알 수 없음 · 비교할 리소스 없음 | UnknownState lg: `알 수 없음 (비교할 수 있는 리소스 없음)`, 사유 `이 스냅샷의 종류는 모두 대시보드 권한 밖입니다.` + 6.3 ④ 비교 불가 칩 목록 |
 | 알 수 없음 · 스냅샷 파일 확인 전 | UnknownState lg `icon="hourglass"`(components 6.4): `알 수 없음 (스냅샷 파일 확인 전)`, 사유 `내보내기가 진행 중일 수 있습니다.` |
@@ -580,10 +580,10 @@ ASM-D 4.9 구조 그대로(섹션 머리, `표 | 원문 JSON` SegmentedControl, 
 |---|---|---|
 | 생성 시각 | 로컬 시각 + UTC 폴더 이름(mono) | `snapshotId` ≠ 폴더 이름이면 warn `폴더 이름과 다름` |
 | CLI | `k8s-snapshot 0.1.0 · Node 22.9.0 · kubectl 1.30.2`(없는 항목 생략) | |
-| 클러스터 이름 | mono 12, `null`이면 `알 수 없음`(`text.tertiary`) | |
+| 클러스터 이름 | `ResourceName kind="cluster"`(FQDN 앞 보존, `components.md` 19.3), `null`이면 `알 수 없음`(`text.tertiary`) | |
 | 컨텍스트 | mono 12 | |
-| 클러스터 ID | mono 12(kube-system UID) + CopyButton sm | 대시보드와 같음 info `대시보드가 연결된 클러스터와 같음` / 다름 warn `대시보드가 연결된 클러스터와 다름 (prod-eks)` / 없음 warn `클러스터 ID 없음 — 드리프트를 계산하지 않음` / 클러스터 연결 없음 info `대시보드 클러스터 연결 없음 — 비교할 수 없음` |
-| 서버 버전 | mono 12 `v1.30.4-eks-…` | |
+| 클러스터 ID | mono 12(kube-system UID) + CopyButton sm | 대시보드와 같음 info `대시보드가 연결된 클러스터와 같음` / 다름 warn `대시보드가 연결된 클러스터와 다름 (prod.k8s.example.com)` / 없음 warn `클러스터 ID 없음 — 드리프트를 계산하지 않음` / 클러스터 연결 없음 info `대시보드 클러스터 연결 없음 — 비교할 수 없음` |
+| 서버 버전 | mono 12 `v1.31.2`(kOps 클러스터는 배포판 접미사가 붙지 않는다) | |
 | 네임스페이스 규칙 | `시스템 제외 전체` / `포함: app, data` / `제외: batch`(mono 목록) | 시스템 포함 warn `시스템 네임스페이스 포함` |
 | 내보낸 네임스페이스 | mono 12 쉼표 목록 전체, 줄바꿈 허용 | |
 | 없던 네임스페이스 | mono 12 목록, 없으면 `없음` | 1개 이상이면 warn `설정에 있지만 클러스터에 없던 네임스페이스` |

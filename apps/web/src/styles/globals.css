@@ -183,12 +183,28 @@ samp {
   height: calc(100dvh - var(--size-top-bar));
   background: var(--color-bg-surface);
   border-right: var(--border-width-thin) solid var(--color-border-subtle);
-  overflow-x: hidden;
-  overflow-y: auto;
+  /*
+   * 2026-09-25(shell.md 3.3): 사이드바 자체는 스크롤하지 않는다. **목록 영역만** 스크롤하고
+   * `설정`·`메뉴 접기`는 하단에 고정된다(SideNav 3단 flex). 여기서 auto 로 두면 하단 영역까지
+   * 함께 밀려 올라가 1366×768 노트북에서 화면 밖으로 나간다.
+   */
+  overflow: hidden;
 }
 
 .app-body > .app-nav[data-collapsed="true"] {
   width: var(--size-side-nav-collapsed);
+}
+
+/*
+ * 배너가 떠 있으면 사이드바 높이는 `뷰포트 − 96px` 이다 (shell.md 3.3).
+ * 종전에는 배너가 있어도 `− 56px` 라서 사이드바 아래 40px 이 화면 밖으로 밀려났다.
+ * 하단 고정 영역(`설정`·`메뉴 접기`)이 생기기 전에는 눈에 띄지 않았지만,
+ * 이제는 그 40px 안에 **눌러야 하는 항목**이 있다(2026-09-25 Edge 실측으로 발견).
+ */
+.app-shell:has(> .app-banner) .app-body > .app-nav {
+  top: calc(var(--size-top-bar) + var(--size-connection-banner));
+  height: calc(100vh - var(--size-top-bar) - var(--size-connection-banner));
+  height: calc(100dvh - var(--size-top-bar) - var(--size-connection-banner));
 }
 
 /* 본문: 패딩 24px, 내용 최대 폭 1600px(왼쪽 정렬) */

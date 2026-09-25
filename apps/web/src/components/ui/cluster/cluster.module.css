@@ -1,0 +1,450 @@
+/*
+ * 컨트롤 플레인 전용 표현 컴포넌트 (components.md 18절, cluster-status.md 3.2.3, status.md 2.5)
+ * 색·간격·글자는 tokens.css 변수만 쓴다. **새 토큰 없음**(designer D9).
+ * 핵심: `notReporting`(보고 없음) = 빗금 + solid 테두리, `stale`(데이터 오래됨) = 빗금 없음 + dashed 테두리.
+ */
+
+.matrixWrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+/* ───── 한 줄 요약 (매트릭스 위 8px) ───── */
+.matrixSummary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
+  font: var(--font-caption);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--color-text-secondary);
+}
+
+.matrixSummaryTotal {
+  font: var(--font-caption-strong);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--color-text-primary);
+}
+
+/* 항목 사이 가운뎃점 */
+.matrixSummarySep {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.matrixSummarySep::before {
+  content: "·";
+  padding: 0 var(--spacing-1);
+  color: var(--color-text-tertiary);
+}
+
+.matrixSummaryItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  white-space: nowrap;
+}
+
+.matrixSummaryZero {
+  color: var(--color-text-disabled);
+}
+
+/* 숫자를 누르면 그 상태 셀만 강조 — 클릭 영역 최소 32px(status.md 7절) */
+.matrixSummaryButton {
+  min-height: var(--size-min-hit-target);
+  padding: 0 var(--spacing-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.matrixSummaryButton:hover {
+  background: var(--color-bg-hover);
+}
+
+.matrixScrollHint {
+  margin-left: auto;
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+/* ───── 스크롤 컨테이너 ───── */
+/* 표가 넘치면 표 안에서만 가로 스크롤(360px 화면에서 페이지가 밀리지 않게) */
+.matrixScroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/*
+ * 폭 규칙(cluster-status.md 3.2.3): 왼쪽 머리 열 220px 고정,
+ * 셀 폭 clamp(140px, (가용 폭 − 220px) ÷ N, 240px).
+ * table-layout: fixed 이면 남는 폭을 열이 똑같이 나눠 가지므로
+ * 표 자체의 min-width/max-width 로 하한·상한을 준다(가운데 값은 (100% − 220) ÷ N 이 된다).
+ */
+.matrix {
+  width: 100%;
+  min-width: calc(220px + var(--matrix-cols) * 140px);
+  max-width: calc(220px + var(--matrix-cols) * 240px);
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.matrixSticky {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 220px;
+  background: var(--color-bg-surface);
+}
+
+/* 가로로 스크롤한 동안에만 첫 열 오른쪽 가장자리에 그림자 */
+.matrixScrolled .matrixSticky {
+  box-shadow: var(--shadow-sm);
+  clip-path: inset(0 -8px 0 0);
+}
+
+.matrixCorner {
+  height: var(--spacing-10);
+  padding: 0;
+}
+
+/* ───── 머리 행 40px ───── */
+.matrixColHead {
+  height: var(--spacing-10);
+  padding: 0 0 0 var(--spacing-1);
+  vertical-align: middle;
+  text-align: left;
+  font-weight: inherit;
+}
+
+.matrixColHeadInner {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+  min-width: 0;
+  padding: 0 calc(var(--spacing-2) + var(--spacing-0-5) + var(--border-width-thin));
+  overflow: hidden;
+}
+
+.matrixColName {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.matrixColMeta {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  font: var(--font-micro);
+  color: var(--color-text-secondary);
+}
+
+.matrixColMetaText {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 마스터가 Ready 가 아니면 그 열 전체 배경 sunken */
+.matrixColDim {
+  background: var(--color-bg-surface-sunken);
+}
+
+/* ───── 행 머리 (구성요소 이름) ───── */
+.matrixRowHead {
+  height: var(--spacing-12);
+  padding: 0 var(--spacing-3) 0 0;
+  vertical-align: middle;
+  text-align: left;
+  font-weight: inherit;
+}
+
+.matrixRowHeadInner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.matrixRowLabel {
+  font: var(--font-resource-name);
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 행 사이 4px(격자선을 긋지 않고 틈으로 나눈다). 전체 높이 = 40 + 5 × 48 + 4 × 4 = 296px */
+.matrix tbody tr + tr .matrixRowHead,
+.matrix tbody tr + tr .matrixCellTd {
+  padding-top: var(--spacing-1);
+}
+
+.matrixCellTd {
+  height: var(--spacing-12);
+  padding: 0 0 0 var(--spacing-1);
+  vertical-align: middle;
+}
+
+/* ───── 셀 ───── */
+/*
+ * Tooltip 이 감싸는 자리. `.tooltipAnchor`(inline-flex)보다 뒤에 오는 파일이라는 보장이 없어
+ * 두 클래스로 특이도를 올린다 — inline-flex 로 남으면 셀이 칸 폭(240px)이 아니라
+ * 글자 폭(약 73px)으로 쪼그라든다(2026-09-24 Edge 실측으로 발견).
+ */
+/*
+ * 로그 버튼 자리 (components.md 21.5). 셀 위에 **겹쳐** 그린다 — 자리를 상시 비우면
+ * 최소 셀 폭 140px 에서 내용 폭이 114 → 90px 로 줄어 2행 사유가 더 심하게 잘린다.
+ */
+.cellBox {
+  position: relative;
+  min-width: 0;
+}
+
+.cellLogButton {
+  position: absolute;
+  right: var(--spacing-1);
+  bottom: var(--spacing-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-badge-md);
+  height: var(--size-badge-md);
+  border: var(--border-width-thin) solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-xs);
+  color: var(--color-text-secondary);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 키보드로 Tab 해 와도 보인다(focus-within). 마우스는 셀 hover */
+.cellBox:hover .cellLogButton,
+.cellBox:focus-within .cellLogButton {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.cellLogButton:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.matrixCellTd .cellAnchor {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+/*
+ * 두 줄(captionStrong 16 + micro 14)이 48px 안에 딱 들어간다: 8 + 16 + 14 + 8 + 테두리 2 = 48.
+ * 줄 사이에 gap 을 주면 2px 이 넘쳐 두 번째 줄(=장애 사유)이 잘린다(2026-09-24 Edge 스크린샷으로 발견).
+ */
+.cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: var(--spacing-12);
+  min-width: 0;
+  padding: var(--spacing-2) calc(var(--spacing-2) + var(--spacing-0-5));
+  border: var(--border-width-thin) solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  text-decoration: none;
+  overflow: hidden;
+}
+
+a.cell:hover {
+  border-color: var(--color-border-default);
+  background: var(--color-bg-hover);
+}
+
+.cellLine1 {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.cellLabel {
+  font: var(--font-caption-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cellDetail {
+  font: var(--font-micro);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cellMissingIcon {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+}
+
+/* 상태별 모습 (cluster-status.md 3.2.3 표) */
+.cell-ok {
+  border-color: var(--color-border-subtle);
+}
+
+.cell-ok .cellLine1 {
+  color: var(--color-status-ok-fg);
+}
+
+.cell-warn {
+  border-color: var(--color-status-warn-border);
+  background: var(--color-status-warn-bg);
+}
+
+.cell-warn .cellLine1 {
+  color: var(--color-status-warn-fg);
+}
+
+/* 테두리가 2px 이라 위아래로 1px 씩 더 먹는다 — 그만큼 세로 패딩을 줄여야 두 줄이 안 잘린다 */
+.cell-crit {
+  border-width: var(--border-width-thick);
+  border-color: var(--color-status-crit-border);
+  background: var(--color-status-crit-bg);
+  padding-block: calc(var(--spacing-2) - var(--border-width-thin));
+}
+
+.cell-crit .cellLine1 {
+  color: var(--color-status-crit-fg);
+}
+
+.cell-unknown,
+.cell-notReporting {
+  border-style: solid;
+  border-color: var(--color-status-unknown-border);
+  background: var(--color-status-unknown-bg);
+}
+
+.cell-unknown .cellLine1,
+.cell-notReporting .cellLine1 {
+  color: var(--color-status-unknown-fg);
+}
+
+.cell-missing {
+  border-style: var(--border-style-estimate);
+  border-color: var(--color-border-default);
+}
+
+.cell-missing .cellLine1 {
+  color: var(--color-text-tertiary);
+}
+
+/*
+ * 데이터 오래됨: **빗금 없음 + dashed 테두리 + 채움 없음**.
+ * 아래 .cellHatched(보고 없음)와 확실히 달라 보여야 한다(status.md 2.5).
+ */
+.cell-stale {
+  border-style: var(--border-style-stale);
+  border-color: var(--color-status-stale-border);
+  background: var(--color-bg-surface);
+}
+
+.cell-stale .cellLine1 {
+  color: var(--color-status-stale-fg);
+}
+
+.cell-stale .cellDetail {
+  color: var(--color-status-stale-value-text);
+}
+
+/*
+ * 보고 없음(notReporting): 45° 빗금(1px status.unknown.border, 간격 6px) + **solid** 테두리.
+ * 빗금은 색이 아니라 채움 패턴이라 흑백·회색조에서도 stale 과 갈린다(status.md 2.5, designer D4).
+ * stale 로 바뀌어도 빗금은 지우지 않는다(끊긴 순간의 사실을 남긴다).
+ */
+.cellHatched {
+  border-style: solid;
+  border-color: var(--color-status-unknown-border);
+  background:
+    repeating-linear-gradient(
+      var(--chart-hatch-angle),
+      var(--color-status-unknown-border) 0 var(--chart-hatch-line-width),
+      transparent var(--chart-hatch-line-width) calc(var(--chart-hatch-line-width) + var(--spacing-1-5))
+    ),
+    var(--color-status-unknown-bg);
+}
+
+/*
+ * 보고 없음 + 데이터 오래됨이 겹치면 **테두리는 stale 이 가져가고 빗금은 남는다**(status.md 2.5).
+ * 빗금을 지우면 "마스터가 보고를 멈췄다"는 사실이 화면에서 사라진다.
+ */
+.cell-stale.cellHatched {
+  border-style: var(--border-style-stale);
+  border-color: var(--color-status-stale-border);
+}
+
+/* 요약 숫자 클릭 → 그 상태 셀만 2000ms 외곽선(status.<key>.solid) */
+.cellFlash {
+  --flash-color: var(--color-status-unknown-solid);
+  animation: matrixFlash var(--motion-duration-status-highlight) var(--motion-easing-standard) 1;
+}
+
+.cell-notReporting.cellFlash,
+.cell-missing.cellFlash {
+  --flash-color: var(--color-status-unknown-solid);
+}
+
+.cell-ok.cellFlash {
+  --flash-color: var(--color-status-ok-solid);
+}
+
+.cell-warn.cellFlash {
+  --flash-color: var(--color-status-warn-solid);
+}
+
+.cell-crit.cellFlash {
+  --flash-color: var(--color-status-crit-solid);
+}
+
+.cell-stale.cellFlash {
+  --flash-color: var(--color-status-stale-solid);
+}
+
+@keyframes matrixFlash {
+  0%,
+  85% {
+    outline: var(--border-width-thick) solid var(--flash-color);
+    outline-offset: calc(-1 * var(--border-width-thick));
+  }
+  100% {
+    outline: var(--border-width-thick) solid transparent;
+    outline-offset: calc(-1 * var(--border-width-thick));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cellFlash {
+    animation-timing-function: steps(1, end);
+  }
+}
+
+/* ───── 로딩 ───── */
+.matrixSkeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}

@@ -148,7 +148,7 @@ export function isAlwaysExcluded(obj) {
 }
 
 /**
- * 쿠버네티스·EKS 가 자동으로 만든 객체면 규칙 이름, 아니면 null.
+ * 쿠버네티스가 자동으로 만든 객체면 규칙 이름, 아니면 null.
  * 규칙 이름은 metadata.resources.excludedByRule.*.autoCreatedNames 에 들어간다 (사용자 리소스 이름이 아님).
  */
 export function isAutoCreated(obj, kind) {
@@ -166,6 +166,10 @@ export function isAutoCreated(obj, kind) {
   }
   if (['Role', 'RoleBinding', 'ClusterRole', 'ClusterRoleBinding'].includes(k)) {
     if (name.startsWith('system:')) return 'system:*';
+    // EKS 잔재: kOps 클러스터에는 `eks:` 이름의 RBAC 객체가 없어 **매칭되지 않는다**(무해).
+    // 대상 환경이 kOps로 바뀌었지만(docs/specs/kops-support.md) 지우면 이 CLI 테스트를 함께
+    // 손봐야 해서 남겨 둔다 — `docs/specs/k8s-snapshot.md` 3.4의 "다음 정리 때 삭제" 방침.
+    // 버그가 아니고, kOps에서 의미 있는 규칙도 아니다.
     if (name.startsWith('eks:')) return 'eks:*';
     if (labels['kubernetes.io/bootstrapping'] === 'rbac-defaults') return 'rbac-defaults';
   }

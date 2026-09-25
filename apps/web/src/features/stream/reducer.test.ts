@@ -39,12 +39,33 @@ describe("stream reducer — 연결·스냅샷", () => {
   it("cluster.snapshot 은 행을 키로 정규화하고, 다시 오면 통째로 교체한다", () => {
     const s = connected();
     expect(Object.keys(s.cluster!.pods)).toContain("prod/api-7f9c8d6b5-x2kq9");
-    expect(Object.keys(s.cluster!.nodes)).toHaveLength(6);
+    // 스냅샷 nodes 에는 마스터 3대가 함께 온다 (계약 8.2). 화면이 role 로 나눈다
+    expect(Object.keys(s.cluster!.nodes)).toHaveLength(9);
 
     const next = applyEvent(s, ev("cluster.snapshot", { ...fx.clusterSnapshot, pods: fx.clusterSnapshot.pods.slice(0, 2), nodes: [] }));
     expect(Object.keys(next.cluster!.pods)).toHaveLength(2);
     expect(Object.keys(next.cluster!.nodes)).toHaveLength(0);
     expect(next.snapshotAt.cluster).toBe(NOW);
+  });
+
+  it("cluster.controlplane.updated 는 기존 cluster 토픽 이벤트이고 단일 객체를 통째로 교체한다 (계약 8.2)", () => {
+    const s = connected();
+    expect(s.cluster!.controlPlane.components.items).toHaveLength(15);
+    expect(s.cluster!.controlPlane.masters.ready).toBe(2);
+
+    const next = applyEvent(
+      s,
+      ev("cluster.controlplane.updated", {
+        ...fx.controlPlane,
+        headline: "쿼럼 상실 — 마스터 1/3 Ready",
+        masters: { ...fx.controlPlane.masters, ready: 1, quorum: { ...fx.controlPlane.masters.quorum, state: "lost" as const } },
+      }),
+    );
+    expect(next.cluster!.controlPlane.headline).toBe("쿼럼 상실 — 마스터 1/3 Ready");
+    expect(next.cluster!.controlPlane.masters.quorum.state).toBe("lost");
+    // 새 토픽을 만들지 않았다 — 같은 `cluster` 토픽이고 나머지 캐시는 그대로다
+    expect(next.cluster!.nodes).toBe(s.cluster!.nodes);
+    expect(next.cluster!.pods).toBe(s.cluster!.pods);
   });
 
   it("재연결(hello)만으로는 값을 지우지 않는다 (새 스냅샷이 올 때 교체)", () => {

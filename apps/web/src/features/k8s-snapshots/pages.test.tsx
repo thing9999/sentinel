@@ -162,7 +162,7 @@ function renderWith(ui: ReactNode, summary: K8sSnapshotSummary | null = k8sSumma
 describe("목록 /snapshots/k8s", () => {
   it("머리 `스냅샷` + AWS/Kubernetes 탭(현재 Kubernetes), 파일·드리프트 두 열, 내보내기·적용 버튼 없음 (AC-K16·K20)", async () => {
     const { retain } = renderWith(<K8sListPage />);
-    await screen.findByText("EKS 1.34 업그레이드 전");
+    await screen.findByText("kOps 1.31 업그레이드 전");
     expect(screen.getByRole("heading", { level: 1, name: "스냅샷" })).toBeTruthy();
     const tabs = screen.getByRole("navigation", { name: "스냅샷 종류" });
     const k8sTab = within(tabs).getByRole("link", { name: /Kubernetes/ });
@@ -198,7 +198,7 @@ describe("목록 /snapshots/k8s", () => {
   it("URL 필터 값 = API 값 (drift·cluster·status)", async () => {
     searchParams = new URLSearchParams("drift=warning,not_computed&cluster=same&status=critical&sort=status:desc");
     renderWith(<K8sListPage />);
-    await screen.findByText("EKS 1.34 업그레이드 전");
+    await screen.findByText("kOps 1.31 업그레이드 전");
     const c = calls.find((x) => x.path === "/k8s-snapshots")!;
     expect(c.query).toMatchObject({ drift: "warning,not_computed", cluster: "same", status: "critical", sort: "status:desc" });
   });
@@ -207,7 +207,7 @@ describe("목록 /snapshots/k8s", () => {
     renderWith(<K8sListPage />, k8sSummary(), [
       { type: "k8s-snapshots.drift", topic: "k8s-snapshots", payload: { snapshotId: "20260919-020000", trigger: "requested", drift: driftBadge(), autoTargetId: "20260919-061000" } },
     ]);
-    await screen.findByText("EKS 1.34 업그레이드 전");
+    await screen.findByText("kOps 1.31 업그레이드 전");
     const table = screen.getByRole("table", { name: /Kubernetes 스냅샷 목록/ });
     expect(within(table).getAllByText("차이 3건")).toHaveLength(2);
   });
@@ -242,7 +242,7 @@ describe("목록 /snapshots/k8s", () => {
   it("새로고침은 POST refresh {} (JSON)", async () => {
     handler = (c) => (c.path === "/k8s-snapshots/refresh" ? { dataSource: "mock", generatedAt: "", revision: 2, summary: k8sSummary(), cli: {} } : defaultHandler(c));
     renderWith(<K8sListPage />);
-    await screen.findByText("EKS 1.34 업그레이드 전");
+    await screen.findByText("kOps 1.31 업그레이드 전");
     fireEvent.click(screen.getByRole("button", { name: "지금 다시 읽기" }));
     await waitFor(() => expect(calls.some((c) => c.path === "/k8s-snapshots/refresh")).toBe(true));
     expect(calls.find((c) => c.path === "/k8s-snapshots/refresh")).toMatchObject({ method: "POST", body: {} });
@@ -504,7 +504,7 @@ describe("상세 드리프트 탭 (?view=drift)", () => {
   it("다른 클러스터면 알 수 없음 + 계산 버튼 비활성 (AC-K35)", async () => {
     handler = (c) =>
       c.path === `/k8s-snapshots/${ID}/drift` && c.method === "GET"
-        ? driftResponse({ snapshotId: ID, drift: MISMATCH, resources: [], snapshotCluster: { id: "x", context: "staging", name: "staging-eks", serverVersion: null } })
+        ? driftResponse({ snapshotId: ID, drift: MISMATCH, resources: [], snapshotCluster: { id: "x", context: "staging", name: "staging.k8s.example.com", serverVersion: null } })
         : defaultHandler(c);
     const blocked = { allowed: false, reasonCode: "CLUSTER_MISMATCH", reasonText: "다른 클러스터의 스냅샷" };
     const base = k8sDetailResponse();
@@ -514,7 +514,7 @@ describe("상세 드리프트 탭 (?view=drift)", () => {
         : prev(c))(handler);
     renderWith(<K8sDetailPage id={ID} />);
     expect(await screen.findByText("알 수 없음 (다른 클러스터의 스냅샷)")).toBeTruthy();
-    expect(screen.getByText("staging-eks")).toBeTruthy();
+    expect(screen.getByText("staging.k8s.example.com")).toBeTruthy();
     const btn = screen.getAllByRole("button", { name: /^드리프트 계산/ }).find((b) => b.getAttribute("aria-disabled") === "true");
     expect(btn).toBeTruthy();
   });

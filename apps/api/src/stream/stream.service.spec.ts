@@ -84,9 +84,12 @@ describe('StreamService', () => {
       'aws-snapshots',
       'k8s-snapshots',
       'snapshot-menu',
+      'alerts',
     ]);
     expect(svc.parseTopics('db,cluster')).toEqual(['cluster', 'db']);
     expect(() => svc.parseTopics('cluster,nope')).toThrow();
+    // 로그는 **전용 연결**이라 공용 스트림에 토픽이 없다 (AC-LOG22)
+    expect(() => svc.parseTopics('logs')).toThrow();
   });
 
   it('retry → hello → 토픽별 snapshot 순서, 스냅샷 중 변경은 뒤에', async () => {

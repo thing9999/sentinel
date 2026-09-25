@@ -1,0 +1,15 @@
+/* 비용 리소스 내역 표 전용 (디자인 aws-cost.md 2.5(d), 2026-09-24 (4) 열 폭 개정). 색은 토큰 변수만. */
+
+/*
+ * `대상` 열의 보조 줄 — 독립 `연결` 열을 없애고 여기로 합쳤다(status.md 5.6 ①).
+ * micro 11/14 1줄 말줄임. 이름 20px + 보조 14px = 34px 이라 행 높이 40px 안에 들어간다.
+ */
+.targetSub {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--font-micro);
+  color: var(--color-text-secondary);
+}

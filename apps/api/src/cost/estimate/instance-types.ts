@@ -1,41 +1,9 @@
 /**
- * EKS 버전 → 지원 등급 (표준/확장). 확장 지원 기간이면 컨트롤 플레인 단가가 오른다.
- * 표준 지원 종료일은 AWS EKS 버전 일정표 기준 (갱신 필요 — 보고서 한계에 기록).
+ * 인스턴스 타입 유틸 (대체 후보 계산). 어드바이저 R-GRAVITON·스냅샷이 쓴다.
+ *
+ * (구 eks-support.ts) kOps 전환으로 `eksSupportTier`(EKS 표준/확장 지원 등급)는
+ * 삭제했다 — kOps에는 컨트롤 플레인 관리 요금 자체가 없다 (kops-support 3.5.4).
  */
-const STANDARD_SUPPORT_END: Record<string, string> = {
-  '1.23': '2023-10-11',
-  '1.24': '2024-01-31',
-  '1.25': '2024-05-01',
-  '1.26': '2024-06-11',
-  '1.27': '2024-07-24',
-  '1.28': '2024-11-26',
-  '1.29': '2025-03-23',
-  '1.30': '2025-07-23',
-  '1.31': '2025-11-26',
-  '1.32': '2026-03-23',
-  '1.33': '2026-07-29',
-  '1.34': '2026-12-02',
-  '1.35': '2027-03-27',
-};
-
-export function eksSupportTier(
-  version: string | null,
-  now: Date,
-): 'standard' | 'extended' {
-  if (!version) return 'standard';
-  const m = /^(\d+)\.(\d+)/.exec(version);
-  if (!m) return 'standard';
-  const key = `${m[1]}.${m[2]}`;
-  const end = STANDARD_SUPPORT_END[key];
-  if (end)
-    return now.getTime() >= Date.parse(`${end}T00:00:00Z`)
-      ? 'extended'
-      : 'standard';
-  // 표에 없는 옛 버전은 확장, 새 버전은 표준
-  const minor = Number(m[2]);
-  return Number(m[1]) === 1 && minor < 23 ? 'extended' : 'standard';
-}
-
 // ---------------------------------------------------------------------------
 // 대체 인스턴스 타입 후보 (어드바이저 스냅샷용, 계약 aws-cost 10절)
 // ---------------------------------------------------------------------------

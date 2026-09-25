@@ -299,8 +299,52 @@
   --chip-border: var(--color-status-stale-border);
 }
 
+/* mock tone (components.md 21.2): 상단바 MOCK 배지와 같은 색. 테두리 없음 */
+.chip-mock {
+  background: var(--color-mode-mock-bg);
+  color: var(--color-mode-mock-fg);
+  border-color: transparent;
+}
+
 .chipDashed {
   border-style: var(--border-style-stale);
+}
+
+/* 누르는 칩(components.md 21.2): 최소 hit 영역 32px 은 ::before 로 넓힌다(줄 높이는 그대로) */
+.chipButton {
+  position: relative;
+  cursor: pointer;
+  font: inherit;
+  font-variant-numeric: var(--font-numeric);
+}
+
+.chip-sm.chipButton {
+  font: var(--font-micro);
+  letter-spacing: var(--font-micro-letter-spacing);
+}
+
+.chip-md.chipButton {
+  font: var(--font-caption);
+}
+
+.chipButton::before {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--spacing-1-5)) calc(-1 * var(--spacing-1));
+}
+
+.chipButton:hover {
+  background: var(--color-bg-hover);
+}
+
+.chip-mock.chipButton:hover {
+  background: var(--color-mode-mock-bg);
+  filter: brightness(1.08);
+}
+
+.chipButton[aria-pressed="true"] {
+  border-color: var(--color-accent-default);
+  color: var(--color-accent-default);
 }
 
 .chip-neutral.chipDashed {
@@ -546,6 +590,17 @@
   color: var(--color-text-primary);
 }
 
+/* components.md 19.1: primary 바로 아래 한 줄(`필수 구성요소 15/15`). counts 와 같은 자리 */
+.cardPrimarySub {
+  margin-top: var(--spacing-0-5);
+  font: var(--font-caption);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .counts {
   display: inline-flex;
   flex-wrap: wrap;
@@ -728,6 +783,44 @@
   background: var(--color-bg-hover);
 }
 
+/* components.md 19.2: 라벨 16 + 값 28 + 부제 16 = 60px ≤ 내용 높이 64px (칸 높이 88px 유지) */
+.stripItemWithSub {
+  min-width: 150px;
+}
+
+.stripSub {
+  font: var(--font-caption);
+  font-variant-numeric: var(--font-numeric);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stripSubLink {
+  color: var(--color-text-link);
+  text-decoration: none;
+}
+
+.stripSubLink:hover {
+  color: var(--color-text-link-hover);
+  text-decoration: underline;
+}
+
+/* 값·부제가 서로 다른 곳으로 갈 때 값 줄만 링크 */
+.stripItemHeadLink {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.stripItemHeadLink:hover {
+  text-decoration: underline;
+}
+
 .stripItemLink:focus-visible {
   outline-offset: calc(-1 * var(--size-focus-ring-width));
 }
@@ -806,6 +899,10 @@
   .stripItem {
     min-width: 100px;
   }
+
+  .stripItemWithSub {
+    min-width: 130px;
+  }
 }
 
 /* 1280px 미만: 1줄 전체 상태 + 마지막 갱신, 2줄 수량 칸 */
@@ -845,6 +942,11 @@
     flex: 1 1 40%;
     min-width: 0;
     padding: var(--spacing-2) var(--spacing-2);
+  }
+
+  /* 360px 화면에서는 부제 칸도 줄어든다(가로 스크롤을 만들지 않는 쪽이 우선) */
+  .stripItemWithSub {
+    min-width: 0;
   }
 
   .stripItem::before {

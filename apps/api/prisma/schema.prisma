@@ -30,6 +30,10 @@ enum DataSourceMode {
 /// 설정 (key-value). 경고 기준 오버라이드, 월 예산, 캐시·보존 기간 등.
 /// 값의 모양은 key별로 `src/database/settings-defaults.ts`에 정의한다.
 /// 적용 우선순위(권장): 환경 변수(명시된 경우) > 이 테이블 > 코드 기본값.
+///
+/// **비밀값 key 주의**: `alerts.discord.webhookUrl` 한 개는 비밀값이다(평문 저장, PM 결정 Q4).
+/// 이 테이블을 통째로 읽어 API 응답에 싣지 말 것. 읽기·쓰기는 `src/database/secret-settings.ts`의
+/// 전용 함수로만 하고, 목록 응답은 `listPublicSettings()`를 쓴다(docs/db/schema.md 2.12).
 model Setting {
   key         String   @id @db.VarChar(100)
   value       Json
@@ -47,22 +51,27 @@ model Setting {
 /// 실시간 추정 시간당 소모율 기록 (5분 간격, 90일 보관).
 /// 비용 급증 판단(지난 7일 중앙값)과 급증 원인(기준 시점 대비 바뀐 리소스)에 쓴다.
 model CostRateSample {
-  id              BigInt         @id @default(autoincrement())
-  dataSource      DataSourceMode @map("data_source")
-  sampledAt       DateTime       @map("sampled_at") @db.Timestamptz(3)
+  id                     BigInt         @id @default(autoincrement())
+  dataSource             DataSourceMode @map("data_source")
+  sampledAt              DateTime       @map("sampled_at") @db.Timestamptz(3)
   /// 추정 시간당 소모율 합계 (USD/h, 단가 없는 리소스 제외)
-  totalUsdPerHour Decimal        @map("total_usd_per_hour") @db.Decimal(14, 6)
-  ec2UsdPerHour   Decimal        @default(0) @map("ec2_usd_per_hour") @db.Decimal(14, 6)
-  ebsUsdPerHour   Decimal        @default(0) @map("ebs_usd_per_hour") @db.Decimal(14, 6)
-  lbUsdPerHour    Decimal        @default(0) @map("lb_usd_per_hour") @db.Decimal(14, 6)
-  eksUsdPerHour   Decimal        @default(0) @map("eks_usd_per_hour") @db.Decimal(14, 6)
-  ipv4UsdPerHour  Decimal        @default(0) @map("ipv4_usd_per_hour") @db.Decimal(14, 6)
-  nodeCount       Int            @map("node_count")
+  totalUsdPerHour        Decimal        @map("total_usd_per_hour") @db.Decimal(14, 6)
+  ec2UsdPerHour          Decimal        @default(0) @map("ec2_usd_per_hour") @db.Decimal(14, 6)
+  ebsUsdPerHour          Decimal        @default(0) @map("ebs_usd_per_hour") @db.Decimal(14, 6)
+  lbUsdPerHour           Decimal        @default(0) @map("lb_usd_per_hour") @db.Decimal(14, 6)
+  /// 컨트롤 플레인 (kOps: 마스터 EC2 + etcd/루트 EBS + API LB + 마스터 퍼블릭 IPv4).
+  /// 20260924120000_control_plane_cost_column에서 eks_usd_per_hour를 RENAME한 열이라
+  /// 전환 이전 행에는 옛 정의(EKS 컨트롤 플레인 관리 요금)의 값이 그대로 남아 있다.
+  /// 행별 합계(total = ec2+ebs+lb+controlPlane+ipv4)는 어느 시점 행이든 맞는다.
+  /// 급증 판단 기준선은 settings `cost.spike.rate.baselineFrom` 이후 행만 쓴다(docs/db/schema.md 5절).
+  controlPlaneUsdPerHour Decimal        @default(0) @map("control_plane_usd_per_hour") @db.Decimal(14, 6)
+  ipv4UsdPerHour         Decimal        @default(0) @map("ipv4_usd_per_hour") @db.Decimal(14, 6)
+  nodeCount              Int            @map("node_count")
   /// 단가를 못 찾아 합계에서 빠진 리소스 수
-  unpricedCount   Int            @default(0) @map("unpriced_count")
+  unpricedCount          Int            @default(0) @map("unpriced_count")
   /// 리소스별 요약 [{kind, key, type, option, az, usdPerHour}] (급증 원인 비교용, 비밀값·계정 ID 없음)
-  resources       Json
-  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  resources              Json
+  createdAt              DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([dataSource, sampledAt])
   @@index([sampledAt])
@@ -316,4 +325,222 @@ model AdvisorSuggestion {
 
   @@unique([runId, priority])
   @@map("advisor_suggestions")
+}
+
+// ---------------------------------------------------------------------------
+// alerts (docs/specs/alerts.md 3.7, 설계 근거 docs/db/schema.md 2.8~2.12)
+// ---------------------------------------------------------------------------
+
+/// 알림 심각도. 서버가 이미 계산한 StatusInfo.status를 그대로 옮긴 값 + `resolved`(해제).
+/// 새 등급을 만들지 않는다 (alerts 3.0).
+enum AlertSeverity {
+  critical
+  warning
+  unknown
+  resolved
+
+  @@map("alert_severity")
+}
+
+/// 알림이 만들어진 계기 (alerts 3.7 A).
+/// resolve / restart_summary / test는 **만들어지는 순간 닫힌다**(closed_at = occurred_at).
+enum AlertKind {
+  transition
+  escalation
+  resolve
+  flapping
+  restart_summary
+  test
+
+  @@map("alert_kind")
+}
+
+/// 상태 전이의 이전·현재 값 = StatusInfo.status (cluster-status 3.0). 알림 심각도와 별개 축이다.
+enum AlertStateValue {
+  ok
+  warning
+  critical
+  unknown
+
+  @@map("alert_state_value")
+}
+
+/// 알림이 나가는 채널. `ui`는 항상 켜져 있고 끌 수 없다(alerts 3.3).
+enum AlertChannel {
+  ui
+  discord
+
+  @@map("alert_channel")
+}
+
+/// 채널별 발송 결과 (alerts 3.7 B). skipped_* 는 "보내지 않기로 한 이유"이고 실패가 아니다.
+/// **값을 지우지 않는다.** Postgres는 enum 값 삭제가 없어 지우려면 타입을 다시 만들어야 하고,
+/// 그 과정에서 기존 행의 값이 다른 값으로 바뀐다(20260924200000_alert_delivery_skip_reasons down 참고).
+enum AlertDeliveryStatus {
+  pending
+  sent
+  failed
+  // 보내지 않기로 "판단"한 경우
+  skipped_disabled
+  skipped_not_configured
+  skipped_severity
+  skipped_unknown_off
+  /// 발생 알림을 이 채널로 보내지 않았으므로 해제 알림도 보내지 않는다 (AC-ALERT32).
+  /// 앞뒤 없는 "복구됨"만 채널에 뜨는 것을 막은 기록. **실패가 아니다.**
+  skipped_no_pair
+  // 상황 때문에 건너뛴 경우
+  skipped_mock
+  skipped_restart
+  skipped_flapping
+  /// 연속 실패가 `alerts.discord.failureCircuitCount`를 넘겨 발송을 `failureCooldownMin` 동안
+  /// 멈춘 상태에서 건너뛴 것 (alerts 3.3.2). `failed`와 구분해야 "왜 안 갔나"를 추적할 수 있다.
+  skipped_circuit_open
+
+  @@map("alert_delivery_status")
+}
+
+/// 알림 1건 (alerts 3.7 A).
+///
+/// 보관: `retention.alertDays`(90일) 또는 data_source별 `retention.alertMaxRows`(2,000건) 중
+/// 먼저 닿는 쪽. **`closed_at IS NULL`(진행 중)인 알림은 기간이 지나도 지우지 않는다** —
+/// 지우면 나중에 오는 해제 알림이 짝을 잃는다(AC-ALERT18).
+///
+/// 저장하지 않는 것: 완성된 알림 본문 문자열, 로그 줄, 쿼리 원문, 환경 변수, 웹훅 URL.
+/// 본문은 아래 구성요소(severity·kind·reason_text·targets·시각)로 **표시할 때 조립**한다.
+model Alert {
+  id             String           @id @default(uuid()) @db.Uuid
+  /// mock에서 만들어진 알림이 live 이력에 섞이면 안 된다. 모든 조회가 이 열로 먼저 거른다.
+  dataSource     DataSourceMode   @map("data_source")
+  /// 알림 키. P1: `area:controlPlane|nodes|workloads|pods|events|db|cost`, `source:kube`,
+  /// 그리고 영역이 없는 `system:restart`(워밍업 요약)·`system:test`(테스트 발송).
+  /// P3의 리소스 단위 키(`pod:<ns>/<name>`)도 열 변경 없이 이 열에 들어간다.
+  alertKey       String           @map("alert_key") @db.VarChar(320)
+  kind           AlertKind
+  severity       AlertSeverity
+  /// 전이 이전·현재 상태. 기준선이 없으면(restart_summary·test) null
+  fromStatus     AlertStateValue? @map("from_status")
+  toStatus       AlertStateValue? @map("to_status")
+  /// reasons[0].code / reasons[0].text. text는 서버가 이미 redactSecrets + 길이 제한을 거친 값이다.
+  /// 알림 계층이 문장을 새로 쓰지 않는다(alerts 3.0).
+  reasonCode     String?          @map("reason_code") @db.VarChar(100)
+  reasonText     String?          @map("reason_text") @db.VarChar(500)
+  /// 영향 객체 **최대 3개** `AlertTargetJson[]` = [{kind, namespace, name}] (areas.*.problems 재사용)
+  targets        Json             @default("[]")
+  /// 영향 객체 전체 개수. targets보다 크면 화면에 "외 N개"
+  targetCount    Int              @default(0) @map("target_count")
+  occurredAt     DateTime         @map("occurred_at") @db.Timestamptz(3)
+  /// 억제 창에 사건이 합쳐질 때 갱신되는 마지막 사건 시각
+  lastEventAt    DateTime         @map("last_event_at") @db.Timestamptz(3)
+  /// 문제가 정상으로 돌아온 시각(해제 알림을 만든 시각). 화면의 "해결됨 · 지속 N분"
+  resolvedAt     DateTime?        @map("resolved_at") @db.Timestamptz(3)
+  /// 더 이상 "진행 중"이 아니게 된 시각. 해제·격상 대체 시 설정하고,
+  /// 종결형(resolve·restart_summary·test)은 만들 때 occurred_at과 같은 값을 넣는다.
+  /// **보관 정리는 `closed_at IS NOT NULL`인 행만 지운다.** 진행 중 판정의 유일한 기준이다.
+  closedAt       DateTime?        @map("closed_at") @db.Timestamptz(3)
+  /// 해제·격상 알림이 가리키는 원래 발생 알림. 원본이 정리되면 NULL이 된다(연결만 끊기고 행은 남는다)
+  parentAlertId  String?          @map("parent_alert_id") @db.Uuid
+  parent         Alert?           @relation("AlertChain", fields: [parentAlertId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  children       Alert[]          @relation("AlertChain")
+  /// 억제 창(기본 15분)에 합쳐진 사건 수. 1 = 합쳐진 것 없음. 2 이상이면 화면·디스코드에 "반복 N회"
+  repeatCount    Int              @default(1) @map("repeat_count")
+  /// 플래핑 묶음 알림(alerts 3.2.3). 전이 타임라인은 context.transitions에 접어 둔다
+  flapping       Boolean          @default(false)
+  /// 출처 억제로 이 알림에 묶인 영역 키 (source:kube 알림에만). 화면 "영향 영역 5개"
+  suppressedKeys String[]         @default([]) @map("suppressed_keys")
+  /// 확인(읽음) 시각. NULL = 미확인. 로그인이 없으므로 사용자별이 아니라 서버에 하나다(가정 N2)
+  acknowledgedAt DateTime?        @map("acknowledged_at") @db.Timestamptz(3)
+  /// 종류별 **구조화** 부가 정보 `AlertContextJson` (restart_summary의 정지 구간·현재 집계,
+  /// flapping의 전이 타임라인 등). 자유 문장·로그 줄·쿼리 원문을 넣지 않는다.
+  context        Json?
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  deliveries AlertDelivery[]
+  keyStates  AlertKeyState[]
+
+  /// 목록 최신순 + 기간 필터 + 보관 정리(90일·2,000건 오프셋)
+  @@index([dataSource, occurredAt(sort: Desc)])
+  /// 배지: 미확인 수·최악 심각도. acknowledged_at IS NULL 쪽만 읽으므로 이력이 2,000건이어도
+  /// 스캔 대상은 "안 읽은 몇 건"뿐이다 (docs/db/schema.md 4절)
+  @@index([dataSource, acknowledgedAt, severity])
+  /// 키별 이력(영역 필터, 플래핑·억제 확인, 최근 N분 조회)
+  @@index([dataSource, alertKey, occurredAt(sort: Desc)])
+  /// 진행 중(미해제)만 보기 필터
+  @@index([dataSource, closedAt, occurredAt(sort: Desc)])
+  /// 해제↔발생 역참조 + ON DELETE SET NULL이 전체 스캔이 되지 않게
+  @@index([parentAlertId])
+  @@map("alerts")
+}
+
+/// 알림 채널별 발송 기록 (alerts 3.7 B). 알림 1건 × 채널당 **1행**이고 재시도는 attempts로 센다.
+/// **웹훅 URL 원문을 여기에 넣지 않는다.** error_message는 가림 처리된 한 줄이다.
+model AlertDelivery {
+  id            BigInt              @id @default(autoincrement())
+  alertId       String              @map("alert_id") @db.Uuid
+  alert         Alert               @relation(fields: [alertId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  channel       AlertChannel
+  status        AlertDeliveryStatus
+  attempts      Int                 @default(0)
+  lastAttemptAt DateTime?           @map("last_attempt_at") @db.Timestamptz(3)
+  /// 다음 시도 예정 시각 (백오프 5s→30s→120s, 429는 Retry-After). status=pending일 때만 의미가 있다
+  nextAttemptAt DateTime?           @map("next_attempt_at") @db.Timestamptz(3)
+  /// 디스코드 HTTP 응답 코드 (받았으면)
+  responseCode  Int?                @map("response_code")
+  /// 가림 처리된 실패 사유 한 줄 (URL·토큰 없음)
+  errorMessage  String?             @map("error_message") @db.VarChar(500)
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([alertId, channel])
+  /// 발송 큐: status='pending' AND next_attempt_at <= now()
+  @@index([status, nextAttemptAt])
+  @@map("alert_deliveries")
+}
+
+/// 알림 상태 머신 (alerts 3.7 C). 알림 키마다 1행. 15초 재평가 루프가 PK로 읽고
+/// **값이 실제로 바뀐 키만** 쓴다(heartbeat와 달리 무조건 쓰지 않는다 — docs/db/schema.md 2.10).
+model AlertKeyState {
+  dataSource          DataSourceMode  @map("data_source")
+  alertKey            String          @map("alert_key") @db.VarChar(320)
+  /// 마지막으로 관측한 상태 ("직전 상태")
+  status              AlertStateValue
+  /// 이 상태가 된 시각 = 마지막 전이 시각
+  statusSince         DateTime        @map("status_since") @db.Timestamptz(3)
+  /// 진행 중인 알림. 해제·격상 때 연결할 대상을 PK 조회 1번으로 찾는다(alerts 테이블 검색 불필요)
+  openAlertId         String?         @map("open_alert_id") @db.Uuid
+  openAlert           Alert?          @relation(fields: [openAlertId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  /// 억제 창 시작 시각과 합쳐진 사건 수 (alerts 3.2.2)
+  dedupeStartedAt     DateTime?       @map("dedupe_started_at") @db.Timestamptz(3)
+  dedupeCount         Int             @default(0) @map("dedupe_count")
+  /// 플래핑 판정용 **최근 전이 목록** `AlertTransitionJson[]` = [{at, from, to}].
+  /// 플래핑 창(기본 30분)을 벗어난 항목은 쓸 때 잘라낸다(상한 50개). 같은 행에 있으므로
+  /// "최근 N분 이력" 조회에 추가 질의가 필요 없다.
+  recentTransitions   Json            @default("[]") @map("recent_transitions")
+  flapping            Boolean         @default(false)
+  flappingSince       DateTime?       @map("flapping_since") @db.Timestamptz(3)
+  /// unknown이 된 시각 (5분 지속 판정, alerts 3.2.4). 다른 상태면 null
+  unknownSince        DateTime?       @map("unknown_since") @db.Timestamptz(3)
+  /// 출처 억제 중이면 억제한 키(예: `source:kube`). 아니면 null (alerts 3.2.4)
+  suppressedBy        String?         @map("suppressed_by") @db.VarChar(320)
+  /// 마지막으로 알린 영향 객체 집합 (alerts 3.2.2 "새 객체 추가" 판정).
+  /// `"<Kind>/<namespace>/<name>"` 문자열, 상한 200개(넘으면 backend가 자르고 targetCount로만 센다)
+  lastNotifiedTargets String[]        @default([]) @map("last_notified_targets")
+  updatedAt           DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([dataSource, alertKey])
+  @@index([openAlertId])
+  @@map("alert_key_states")
+}
+
+/// 대시보드 생존 heartbeat (alerts 3.7 D, 3.2.5 "정지 구간").
+/// 한 행만 쓴다(`scope='alerts'`). 60초마다 UPDATE 1건이라 fillfactor를 낮춰 HOT 갱신을 돕는다
+/// (마이그레이션에서 `ALTER TABLE ... SET (fillfactor = 70)`).
+model DashboardHeartbeat {
+  scope      String         @id @db.VarChar(32)
+  /// 지금 프로세스가 시작한 시각 (워밍업 판정에 쓸 수 있다)
+  startedAt  DateTime       @map("started_at") @db.Timestamptz(3)
+  /// 마지막 갱신 시각. 재시작 후 `지금 - observed_at`이 **정지 구간**이다. 행이 없으면 "이전 실행 기록 없음"
+  observedAt DateTime       @map("observed_at") @db.Timestamptz(3)
+  dataSource DataSourceMode @map("data_source")
+
+  @@map("dashboard_heartbeats")
 }

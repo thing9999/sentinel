@@ -5,7 +5,8 @@
 # - pods, pods/exec, pods/log, pods/portforward, nodes/proxy 없음
 #
 # 적용:   kubectl apply -f deploy/k8s-snapshot/rbac/export-readonly.yaml   (클러스터 관리자 권한으로, 사람이)
-# 연결:   IAM 주체를 그룹 sentinel-snapshot-exporters 에 연결한다 (README 3장, EKS access entry)
+# 연결:   사람 또는 전용 ServiceAccount를 그룹 sentinel-snapshot-exporters 에 연결한다 (README 3장)
+#         kOps에는 EKS access entry·aws-auth ConfigMap이 없다 — SA 토큰 또는 O=<그룹> 클라이언트 인증서를 쓴다
 # 확인:   kubectl auth can-i --list --as=<사용자> --as-group=sentinel-snapshot-exporters
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -81,7 +82,8 @@ roleRef:
   kind: ClusterRole
   name: sentinel-snapshot-export
 subjects:
-  # 예시 그룹. EKS: aws eks create-access-entry --kubernetes-groups sentinel-snapshot-exporters (README 3장)
+  # 예시 그룹. kOps에서는 O=sentinel-snapshot-exporters 클라이언트 인증서를 쓰거나,
+  # 전용 ServiceAccount를 만들어 아래 subjects를 kind: ServiceAccount 로 바꾼다 (README 3장)
   - apiGroup: rbac.authorization.k8s.io
     kind: Group
     name: sentinel-snapshot-exporters

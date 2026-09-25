@@ -4,18 +4,23 @@ import {
   closeInterruptedAdvisorRuns,
   computeRetentionCutoffs,
   DEFAULT_RETENTION,
+  purgeAlerts,
   purgeExpiredData,
 } from './retention';
 
 describe('computeRetentionCutoffs', () => {
-  it('기본 정책: 소모율 90일, 어드바이저 90일', () => {
+  it('기본 정책: 소모율 90일, 어드바이저 90일, 알림 90일', () => {
     const now = new Date('2026-09-19T00:00:00Z');
     const c = computeRetentionCutoffs(now);
     expect(c.costRateSampleBefore.toISOString()).toBe(
       '2026-06-21T00:00:00.000Z',
     );
     expect(c.advisorRunBefore.toISOString()).toBe('2026-06-21T00:00:00.000Z');
+    expect(c.alertBefore.toISOString()).toBe('2026-06-21T00:00:00.000Z');
     expect(DEFAULT_RETENTION.advisorRunMaxCount).toBe(50);
+    // PM 결정 Q12: 90일 / 2,000건
+    expect(DEFAULT_RETENTION.alertDays).toBe(90);
+    expect(DEFAULT_RETENTION.alertMaxRows).toBe(2000);
   });
 });
 
@@ -116,5 +121,67 @@ describeIt('purgeExpiredData (DB_IT_URL)', () => {
     // 잠금이 풀렸으니 다음 purge에서 90일 지난 그 실행도 지워진다
     const res2 = await purgeExpiredData(prisma, now);
     expect(res2.advisorRuns).toBe(1);
+  });
+
+  it('알림: 90일·건수 초과분만 지우고 진행 중 알림은 남긴다 (AC-ALERT18)', async () => {
+    await prisma.alert.deleteMany({});
+
+    const mkAlert = (
+      i: number,
+      days: number,
+      opts: { open?: boolean; dataSource?: 'mock' | 'live' } = {},
+    ) => ({
+      dataSource: opts.dataSource ?? ('live' as const),
+      alertKey: 'area:pods',
+      kind: 'transition' as const,
+      severity: 'critical' as const,
+      occurredAt: daysAgo(days),
+      lastEventAt: daysAgo(days),
+      closedAt: opts.open ? null : daysAgo(days),
+      reasonText: `#${i}`,
+    });
+
+    // 90일 지난 것 2건(닫힘) + 100일 지난 진행 중 1건 + 최근 3건
+    await prisma.alert.create({ data: mkAlert(1, 91) });
+    await prisma.alert.create({ data: mkAlert(2, 95) });
+    const openOld = await prisma.alert.create({
+      data: mkAlert(3, 100, { open: true }),
+    });
+    for (let i = 4; i <= 6; i++) {
+      await prisma.alert.create({ data: mkAlert(i, i) });
+    }
+    // 해제 알림 1건이 위 진행 중 알림을 가리킨다 (연결이 끊겨도 행은 남아야 한다)
+    await prisma.alert.create({
+      data: {
+        ...mkAlert(7, 1),
+        kind: 'resolve',
+        severity: 'resolved',
+        parentAlertId: openOld.id,
+      },
+    });
+    // 발송 기록은 알림과 함께 사라진다 (CASCADE)
+    const doomed = await prisma.alert.findFirstOrThrow({
+      where: { reasonText: '#1' },
+    });
+    await prisma.alertDelivery.create({
+      data: { alertId: doomed.id, channel: 'discord', status: 'sent' },
+    });
+
+    const removed = await purgeAlerts(prisma, now);
+    expect(removed).toBe(2); // 91일·95일 닫힌 것만
+    expect(await prisma.alert.count()).toBe(5);
+    expect(await prisma.alert.count({ where: { closedAt: null } })).toBe(1);
+    expect(await prisma.alertDelivery.count()).toBe(0);
+
+    // 건수 상한: live 3건만 남기면 최신 3건 + 진행 중 1건
+    const byCount = await purgeAlerts(prisma, now, {
+      ...DEFAULT_RETENTION,
+      alertMaxRows: 3,
+    });
+    expect(byCount).toBeGreaterThan(0);
+    expect(await prisma.alert.count({ where: { closedAt: null } })).toBe(1);
+    // 부모가 지워져도 해제 알림 행은 남고 연결만 끊긴다 (ON DELETE SET NULL)
+    const all = await prisma.alert.findMany();
+    expect(all.length).toBeLessThanOrEqual(4);
   });
 });

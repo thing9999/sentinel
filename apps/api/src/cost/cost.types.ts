@@ -20,20 +20,39 @@ export interface Note {
   text: string;
 }
 
-export type CostCategory = 'ec2' | 'ebs' | 'lb' | 'ipv4' | 'eks';
+export type CostCategory = 'ec2' | 'ebs' | 'lb' | 'ipv4' | 'controlPlane';
+/** 화면 순서 고정 (계약 1절). 서버가 항상 이 순서로 내려보낸다 */
 export const COST_CATEGORIES: readonly CostCategory[] = [
   'ec2',
   'ebs',
   'lb',
   'ipv4',
-  'eks',
+  'controlPlane',
 ];
 export const CATEGORY_LABELS: Record<CostCategory, string> = {
   ec2: 'EC2 노드',
   ebs: 'EBS',
   lb: '로드밸런서',
   ipv4: '퍼블릭 IPv4',
-  eks: 'EKS 컨트롤 플레인',
+  controlPlane: '컨트롤 플레인',
+};
+
+/** `controlPlane` 내역의 하위 종류 (리소스 종류가 아니라 '역할' 축) */
+export type ControlPlaneCostKind =
+  'master_ec2' | 'etcd_ebs' | 'master_root_ebs' | 'api_lb' | 'master_ipv4';
+export const CONTROL_PLANE_KINDS: readonly ControlPlaneCostKind[] = [
+  'master_ec2',
+  'etcd_ebs',
+  'master_root_ebs',
+  'api_lb',
+  'master_ipv4',
+];
+export const CONTROL_PLANE_KIND_LABELS: Record<ControlPlaneCostKind, string> = {
+  master_ec2: '마스터 EC2',
+  etcd_ebs: 'etcd 볼륨',
+  master_root_ebs: '마스터 루트 볼륨',
+  api_lb: 'API 서버 LB',
+  master_ipv4: '마스터 퍼블릭 IPv4',
 };
 
 export type LbType = 'alb' | 'nlb' | 'clb';
@@ -51,7 +70,7 @@ export interface AwsInstance {
   architecture: string | null;
   publicIpv4Count: number;
   rootVolumeIds: string[];
-  /** 태그 eks:nodegroup-name / karpenter.sh/nodepool 등 (없으면 null) */
+  /** 태그 kops.k8s.io/instancegroup (kOps InstanceGroup 이름. 없으면 null) */
   nodeGroupTag: string | null;
 }
 
@@ -88,17 +107,11 @@ export interface AwsLoadBalancer {
   healthyTargets: number | null;
 }
 
-export interface AwsEksCluster {
-  name: string;
-  version: string | null;
-}
-
 export interface AwsResourceSnapshot {
   fetchedAt: Date;
   instances: AwsInstance[];
   volumes: AwsVolume[];
   loadBalancers: AwsLoadBalancer[];
-  eks: AwsEksCluster | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +145,6 @@ export interface PriceBook {
   ebs: Record<string, EbsPrice>;
   lb: Partial<Record<LbType, PriceQuote | null>>;
   ipv4: PriceQuote | null;
-  eks: { standard: PriceQuote | null; extended: PriceQuote | null };
   meta: {
     fetchedAt: string | null;
     cacheUsed: boolean;
@@ -223,16 +235,48 @@ export interface Ipv4Row {
   notes: Note[];
 }
 
-export interface EksRow {
+/**
+ * 컨트롤 플레인 내역 한 줄 (계약 3.1 `resources.controlPlane[]`).
+ * 한 배열에 여러 종류가 섞이고 `kind`로 구분한다. 모양은 kind에 따라 ec2·ebs·lb·ipv4 행과 같다.
+ */
+export interface ControlPlaneRow {
   key: string;
-  clusterName: string;
-  version: string | null;
-  supportTier: 'standard' | 'extended';
+  kind: ControlPlaneCostKind;
   priced: boolean;
-  unitPrice: { usdPerHour: number; source: 'pricing_api'; asOf: string } | null;
   usdPerHour: number | null;
   usdPerMonth: number | null;
   notes: Note[];
+  // master_ec2
+  nodeName?: string | null;
+  instanceId?: string | null;
+  nodeGroup?: string | null;
+  instanceType?: string | null;
+  capacityType?: 'on_demand' | 'spot';
+  zone?: string | null;
+  architecture?: string | null;
+  spotFallback?: boolean;
+  // etcd_ebs · master_root_ebs
+  volumeId?: string;
+  volumeType?: string;
+  sizeBytes?: number;
+  iops?: number | null;
+  throughputMibps?: number | null;
+  /** main | events | null(확실히 알 수 없음 — 볼륨 태그 규칙 확인 필요) */
+  etcdCluster?: 'main' | 'events' | null;
+  // api_lb
+  name?: string;
+  lbType?: LbType;
+  attachedTo?: K8sRef[];
+  healthyTargets?: number | null;
+  identification?: {
+    confidence: 'assumed' | 'ambiguous';
+    matchedBy: string[];
+    candidateCount: number;
+  };
+  // master_ipv4
+  count?: number;
+  unitPrice?:
+    Ec2Row['unitPrice'] | EbsRow['unitPrice'] | LbRow['unitPrice'] | null;
 }
 
 export interface CategoryRow {
@@ -243,6 +287,23 @@ export interface CategoryRow {
   usdPerMonth: number;
   sharePct: number;
   unpricedCount: number;
+  /** controlPlane 카테고리에만 (하위 종류 분해, 순서 고정) */
+  byKind?: {
+    kind: ControlPlaneCostKind;
+    label: string;
+    count: number;
+    usdPerHour: number;
+    usdPerMonth: number;
+    /** api_lb 행에만 true (추정임을 화면이 알 수 있게) */
+    estimated?: boolean;
+  }[];
+  /** controlPlane 카테고리에만. 후보가 0개여도 **항상 있다** (AC-KOPS30) */
+  apiLb?: {
+    state: 'assumed' | 'ambiguous' | 'not_found';
+    candidateCount: number;
+    text: string;
+  };
+  notes?: Note[];
 }
 
 export interface Totals {
@@ -272,7 +333,7 @@ export interface EstimateComputation {
     ebs: EbsRow[];
     lb: LbRow[];
     ipv4: Ipv4Row[];
-    eks: EksRow[];
+    controlPlane: ControlPlaneRow[];
   };
   unpricedCount: number;
   spotFallbackCount: number;
@@ -327,7 +388,7 @@ export interface AllocationBreakdown {
   nodeUsdPerHour: number;
   storageUsdPerHour: number;
   lbUsdPerHour: number;
-  eksUsdPerHour?: number;
+  controlPlaneUsdPerHour?: number;
   ipv4UsdPerHour?: number;
 }
 

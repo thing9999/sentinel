@@ -156,6 +156,25 @@
   overflow-wrap: anywhere;
 }
 
+/*
+ * inline variant (components.md 21.4): 로그 줄 안에 섞이는 조각.
+ * 아이콘 없음, 높이 없음(display: inline), 글자는 주변 본문과 같은 code 13/20.
+ * `display: inline` 이라 줄 높이가 20px 을 넘지 않는다(inline-block 이면 상자가 줄을 밀어낸다).
+ */
+.maskedInline {
+  display: inline;
+  padding: 0 var(--spacing-0-5);
+  border: var(--border-width-thin) dashed var(--color-border-default);
+  border-radius: var(--radius-xs);
+  background: var(--color-bg-surface-sunken);
+  color: var(--color-text-secondary);
+}
+
+.maskedInlineText {
+  font: inherit;
+  color: inherit;
+}
+
 /* ───── DiffValue (14.7) ───── */
 .diffValue {
   display: inline-flex;

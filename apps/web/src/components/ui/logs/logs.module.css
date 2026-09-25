@@ -1,0 +1,343 @@
+/*
+ * 로그 본문 (components.md 20.5, status.md 13.3·13.4, logs.md 7절).
+ * 새 토큰 없음 — 본문은 기존 `code.*`, 가림·생략 표시는 중립색.
+ * 본문에 상태색을 쓰지 않는다(13.1). 유일한 예외가 `가림 처리 실패` 줄이다(7.2).
+ */
+
+.bodyOuter {
+  position: relative;
+  min-width: 0;
+}
+
+/*
+ * 이 파일 안에서만 쓰는 구조 변수(토큰이 아니다):
+ * - `--log-gutter-w`: 가림 gutter 폭(28px, 좁은 폭 24px). 특별한 줄 본문이 gutter 바로 오른쪽에 붙는 데 같이 쓴다.
+ * - `--log-view-w`: 보이는 폭(스크롤 상자 clientWidth). 컴포넌트가 재서 인라인으로 넣는다. 재기 전에는 없다(→ 100%).
+ */
+.body {
+  --log-gutter-w: 28px;
+  position: relative;
+  min-width: 0;
+  border: var(--border-width-thin) solid var(--color-code-border);
+  border-radius: var(--radius-md);
+  background: var(--color-code-bg);
+  color: var(--color-code-fg);
+  font: var(--font-code);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.body:focus-visible {
+  outline: var(--size-focus-ring-width) solid var(--color-border-focus);
+  outline-offset: calc(-1 * var(--size-focus-ring-width));
+}
+
+/*
+ * 줄 바꿈 끔: 본문 **영역 안에서만** 가로 스크롤(페이지는 스크롤하지 않는다).
+ * `.inner` 를 max-content 로 두면 가장 긴 줄이 스크롤 폭을 정하고, 줄 상자(블록)는 그 폭을 그대로 채운다.
+ * 그래야 짧은 줄에서도 sticky gutter 가 오른쪽 끝까지 따라온다.
+ */
+.inner {
+  position: relative;
+  width: max-content;
+  min-width: 100%;
+}
+
+.bodyWrap .inner {
+  width: auto;
+}
+
+/* 줄 바꿈 끔: 가로 스크롤은 이 영역 안에서만 일어난다 */
+.bodyNoWrap {
+  overflow-x: auto;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  min-height: 20px;
+}
+
+.row:hover {
+  background: var(--color-bg-hover);
+}
+
+/*
+ * 가림 표식 자리 (status.md 13.3·13.4): 폭 28px, `position: sticky; left: 0`.
+ * **가로 스크롤해도 사라지지 않는다** — 비밀값이 있었다는 사실이 스크롤 위치에 따라 보였다 안 보였다 하면 안 된다.
+ * 배경을 code.bg 로 채워 뒤 글자가 비쳐 보이지 않게 한다.
+ */
+.gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--log-gutter-w);
+  min-height: 20px;
+  background: var(--color-code-bg);
+  user-select: none;
+}
+
+.row:hover .gutter {
+  /* hover 배경이 gutter 뒤로 비치지 않게 같은 색을 겹쳐 둔다(줄 강조는 본문 쪽에서 보인다) */
+  background: var(--color-code-bg);
+}
+
+/* gutter 안의 표식: 28px 안에 들어가도록 패딩만 줄인 Chip (색·모양은 그대로) */
+.gutterChip {
+  gap: var(--spacing-0-5);
+  height: 16px;
+  padding: 0 var(--spacing-0-5);
+}
+
+.time {
+  flex: 0 0 auto;
+  width: 104px;
+  padding-right: var(--spacing-2);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: var(--font-numeric);
+  white-space: pre;
+  user-select: none;
+}
+
+.prefix {
+  flex: 0 0 auto;
+  width: 200px;
+  padding-right: var(--spacing-2);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: var(--spacing-3);
+  white-space: pre;
+}
+
+.textWrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 긴 줄 잘림 꼬리 ` … (12,345바이트 생략)` */
+.truncated {
+  color: var(--color-text-tertiary);
+}
+
+/* 특별한 줄(생략·바이너리·링버퍼 위쪽·구간 없음): 전체 폭 한 줄, 중립색 */
+.rowNotice {
+  background: var(--color-bg-surface-sunken);
+  color: var(--color-text-tertiary);
+}
+
+.rowNotice .gutter,
+.rowNotice:hover .gutter {
+  background: var(--color-bg-surface-sunken);
+}
+
+/*
+ * 특별한 줄의 본문(시각·접두·문구): **보이는 폭만큼** `sticky` 로 gutter 바로 오른쪽에 붙인다(logs.md 7.2).
+ * 줄 바꿈을 끄고 가로로 끝까지 스크롤해도 `— 이전 줄은 화면에서 지워졌습니다 —` 같은 문구가 **보이는 영역 가운데**에 남는다
+ * (status.md 3.1 "확인 필요 표시는 레이아웃 사정으로 사라지지 않는다", sticky gutter 와 같은 이유. 앵커 구분 줄과 같은 방식).
+ * 폭 = 보이는 폭 − gutter 라서 스크롤 끝에서도 줄 상자(.inner 폭) 안에 딱 들어간다. 재기 전(첫 그림)은 줄 전체 폭 − gutter.
+ * 스크롤이 0 일 때 모양은 종전과 같다(시각 열 → 가운데 문구).
+ */
+.noticeBody {
+  position: sticky;
+  left: var(--log-gutter-w);
+  display: flex;
+  align-items: flex-start;
+  flex: 0 0 auto;
+  width: calc(var(--log-view-w, 100%) - var(--log-gutter-w));
+  min-width: 0;
+}
+
+/*
+ * 전체 폭 한 줄짜리(생략·링버퍼 위쪽·구간 없음)는 **가운데 정렬**(logs.md 7.2) — 본문 줄과 한눈에 갈린다.
+ * `binary`·`가림 처리 실패` 는 한 줄을 대신하는 줄이라 문구를 다른 줄처럼 본문 흐름(왼쪽)에 둔다. 배경은 행 전체 폭 그대로.
+ */
+.rowBand .text {
+  text-align: center;
+}
+
+.noticeText {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  max-width: 100%;
+  min-width: 0;
+  font: var(--font-micro);
+  letter-spacing: var(--font-micro-letter-spacing);
+}
+
+.noticeLabel {
+  min-width: 0;
+}
+
+/*
+ * 줄 바꿈 끔: 줄 높이 20px 격자(가상 스크롤)를 지키려고 특별한 줄 문구도 한 줄로 둔다.
+ * 보이는 폭보다 길면(좁은 화면) 말줄임 — DOM 문구는 그대로라 스크린리더는 끝까지 읽는다.
+ * 줄 바꿈을 켜면 종전대로 감싼다(높이는 측정한다).
+ */
+.bodyNoWrap .rowBand .text {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.bodyNoWrap .rowBand .noticeLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.noticeIcon {
+  flex-shrink: 0;
+}
+
+/*
+ * 그 시각으로 열기 — 앵커 줄(logs.md 7.6 ①): 배경 `bg.selected`(선택 표시용 기존 토큰, 상태 뜻 없음).
+ * hover 해도 바뀌지 않는다. 글자색·gutter(code.bg)는 그대로다. 찾기 일치(`mark`)는 그 위에 겹쳐 그려진다.
+ * `가림 처리 실패` 줄(아래)이 앵커가 되면 warn 배경이 이긴다 — 내용이 사라진 자리라는 표시가 더 중요하다.
+ */
+.rowAnchor,
+.rowAnchor:hover {
+  background: var(--color-bg-selected);
+}
+
+/*
+ * 앵커 구분 줄(logs.md 7.6 ①) — 로그 줄이 아니다. **높이 20px 고정**: 가상 스크롤이 앵커 줄 칸에 20px 를 더해 셈한다
+ * (`LOG_ANCHOR_SEPARATOR_HEIGHT` = `LOG_LINE_HEIGHT`, `.row` 의 20px 와 같은 값). 두 값이 어긋나면 스크롤 위치가 틀어진다.
+ * 문구는 7.2 의 다른 특별한 줄(`text.tertiary` 400)보다 한 단계 진하게(`text.primary` 600). 새 토큰 없음.
+ */
+/* `overflow` 를 주지 않는다 — hidden 이면 이 줄이 스크롤 상자가 되어 문구 상자의 가로 sticky 가 풀린다 */
+.anchorSeparator {
+  display: block;
+  height: 20px;
+  background: var(--color-bg-surface-sunken);
+  user-select: none;
+}
+
+/*
+ * 문구 상자: 보이는 폭(JS 가 잰 clientWidth)만큼 `sticky; left: 0` 으로 붙여 **보이는 폭의 가운데**에 문구를 둔다.
+ * 줄 바꿈을 끄고 가로로 끝까지 스크롤해도 문구가 화면 밖으로 나가지 않는다. 폭을 재기 전(첫 그림)에는 줄 전체 폭 가운데.
+ */
+.anchorSticky {
+  position: sticky;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--log-view-w, 100%);
+  height: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 var(--spacing-2);
+  box-sizing: border-box;
+}
+
+.anchorLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
+  max-width: 100%;
+  font: var(--font-micro);
+  font-weight: var(--font-caption-strong-weight);
+  letter-spacing: var(--font-micro-letter-spacing);
+  color: var(--color-text-primary);
+}
+
+.anchorIcon {
+  flex-shrink: 0;
+}
+
+/* 높이 20px 를 지키려고 줄을 바꾸지 않는다. 좁은 폭에서 넘치면 말줄임(같은 사실은 조작 줄 위 LOG_ANCHOR_* 안내가 전부 말한다) */
+.anchorText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 가림 처리 실패 — 로그 본문에 상태색을 쓰지 않는다는 규칙의 **유일한 예외**(logs.md 7.2).
+ * 내용이 통째로 사라진 자리라 회색으로 두면 로그가 원래 그랬다고 읽힌다.
+ */
+.rowRedactFailed {
+  background: var(--color-status-warn-bg);
+  color: var(--color-status-warn-fg);
+}
+
+.rowRedactFailed .gutter,
+.rowRedactFailed:hover .gutter {
+  background: var(--color-status-warn-bg);
+}
+
+/* 찾기 일치: **배경만** 바꾼다(글자색을 바꾸면 본문에 상태색을 쓰는 셈이 된다) */
+.hit {
+  background: var(--color-status-warn-bg);
+  color: inherit;
+}
+
+.hitCurrent {
+  outline: var(--border-width-thin) solid var(--color-accent-default);
+}
+
+.emptyLine {
+  margin: 0;
+  padding: var(--spacing-3);
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+.skeletonWrap {
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-1) var(--spacing-3);
+}
+
+.skeletonRow {
+  display: flex;
+  align-items: center;
+  height: 20px;
+}
+
+/* `새 줄 N개`: 본문 하단 가운데에 떠 있는 버튼 (logs.md 7.4) */
+.pending {
+  position: absolute;
+  left: 50%;
+  bottom: var(--spacing-3);
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.pending button {
+  box-shadow: var(--shadow-md);
+}
+
+/* 좁은 폭(logs.md 12절): 시각 72px(`14:02:10`), 접두 열 숨김, gutter 24px. **gutter 를 없애지 않는다** */
+@media (max-width: 1023px) {
+  .time {
+    width: 72px;
+  }
+
+  .prefix {
+    width: 140px;
+  }
+}
+
+@media (max-width: 639px) {
+  .body {
+    --log-gutter-w: 24px;
+  }
+
+  .prefix {
+    display: none;
+  }
+}

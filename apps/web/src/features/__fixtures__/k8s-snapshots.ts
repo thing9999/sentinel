@@ -60,7 +60,7 @@ export const NOT_COMPUTED: DriftBadge = {
 
 export const MISMATCH: DriftBadge = {
   ...NOT_COMPUTED,
-  status: st("unknown", [{ code: "CLUSTER_MISMATCH", text: "다른 클러스터의 스냅샷 (staging-eks)", status: "unknown" }]),
+  status: st("unknown", [{ code: "CLUSTER_MISMATCH", text: "다른 클러스터의 스냅샷 (staging.k8s.example.com)", status: "unknown" }]),
 };
 
 export const LAST_RESULT_OK: DriftBadge = {
@@ -84,7 +84,7 @@ export function k8sSummary(over: Partial<K8sSnapshotSummary> = {}): K8sSnapshotS
     writable: ALLOW,
     lastCheckedAt: T,
     limits: { editMaxBytes: 5242880, viewMaxBytes: 20971520, inProgressMinutes: 30, labelMaxLength: 60, memoMaxLength: 2000 },
-    dashboardCluster: { state: "ok", id: CLUSTER_ID, name: "prod-eks", context: "prod-eks", serverVersion: "v1.34.1" },
+    dashboardCluster: { state: "ok", id: CLUSTER_ID, name: "prod.k8s.example.com", context: "prod.k8s.example.com", serverVersion: "v1.34.1" },
     latestDrift: { snapshotId: "20260919-061000", drift: driftBadge() },
     ...over,
   };
@@ -118,7 +118,7 @@ function item(over: Partial<K8sSnapshotListItem> & { id: string }): K8sSnapshotL
     label: null,
     memo: null,
     notesUpdatedAt: null,
-    cluster: { id: CLUSTER_ID, context: "sentinel-snapshot", name: "prod-eks", serverVersion: "v1.34.1-eks-8a2c1f0", relation: "same" },
+    cluster: { id: CLUSTER_ID, context: "sentinel-snapshot", name: "prod.k8s.example.com", serverVersion: "v1.34.1", relation: "same" },
     scope: {
       namespaceMode: "all_except_system",
       namespaces: ["batch", "data", "default", "monitoring", "prod"],
@@ -148,7 +148,7 @@ export const K8S_ITEMS: K8sSnapshotListItem[] = [
   item({
     id: "20260919-020000",
     drift: MISMATCH,
-    cluster: { id: "c3a9e0f2-5b6d-4e7f-8a9b-0c1d2e3f4a5b", context: "staging", name: "staging-eks", serverVersion: "v1.34.1", relation: "other" },
+    cluster: { id: "c3a9e0f2-5b6d-4e7f-8a9b-0c1d2e3f4a5b", context: "staging", name: "staging.k8s.example.com", serverVersion: "v1.34.1", relation: "other" },
     actions: {
       editFiles: ALLOW,
       editNotes: ALLOW,
@@ -160,7 +160,7 @@ export const K8S_ITEMS: K8sSnapshotListItem[] = [
     id: "20260918-230000",
     status: st("critical", [{ code: "SCAN_SECRET_ERRORS", text: "비밀값 의심 1건 (k8s-env-literal)", status: "critical" }]),
     scan: { errors: 1, warnings: 0, strict: false, passed: false, rules: ["k8s-env-literal"] },
-    label: "EKS 1.34 업그레이드 전",
+    label: "kOps 1.31 업그레이드 전",
     resources: { current: { total: 34, files: 34 }, atExport: { total: 35 }, changedSinceExport: true, previous: null, delta: null },
   }),
   item({ id: "20260910-000000", drift: LAST_RESULT_OK }),
@@ -293,7 +293,7 @@ export function k8sDetailData(over: Partial<K8sSnapshotDetailData> = {}): K8sSna
         snapshotIdTimezone: "UTC",
         createdAt: "2026-09-18T23:00:42.311Z",
         tool: { name: "sentinel-k8s-snapshot", version: "0.1.0", node: "v22.12.0", client: "@kubernetes/client-node 2.0.0" },
-        cluster: { id: CLUSTER_ID, idSource: "kube-system-namespace-uid", context: "sentinel-snapshot", name: "prod-eks", serverVersion: "v1.34.1-eks-8a2c1f0" },
+        cluster: { id: CLUSTER_ID, idSource: "kube-system-namespace-uid", context: "sentinel-snapshot", name: "prod.k8s.example.com", serverVersion: "v1.34.1" },
         scope: {
           namespaces: { mode: "all_except_system", include: [], exclude: [], system: ["kube-system"], systemIncluded: [] },
           exported: ["data", "prod"],
@@ -342,7 +342,7 @@ export function k8sDetailData(over: Partial<K8sSnapshotDetailData> = {}): K8sSna
         },
       ],
     },
-    notes: { label: "EKS 1.34 업그레이드 전", memo: null, updatedAt: null, version: V("d"), fileExists: true },
+    notes: { label: "kOps 1.31 업그레이드 전", memo: null, updatedAt: null, version: V("d"), fileExists: true },
     notices: [
       { code: "DATA_NOT_INCLUDED", text: "이 스냅샷은 Postgres 데이터와 PV 내용을 담지 않습니다. 스냅샷의 PVC 를 적용하면 빈 볼륨이 새로 만들어집니다 (README 8장)" },
       { code: "HELM_MANAGED", text: "Helm 관리 리소스 2개 — Helm 으로 복원 권장" },
@@ -405,8 +405,8 @@ export function driftResponse(over: Partial<DriftResponse> = {}): DriftResponse 
     snapshotId: "20260919-061000",
     drift: driftBadge(),
     lease: null,
-    target: { clusterId: CLUSTER_ID, context: "prod-eks", name: "prod-eks", serverVersion: "v1.34.1", sourceState: "mock" },
-    snapshotCluster: { id: CLUSTER_ID, context: "sentinel-snapshot", name: "prod-eks", serverVersion: "v1.34.1-eks-8a2c1f0" },
+    target: { clusterId: CLUSTER_ID, context: "prod.k8s.example.com", name: "prod.k8s.example.com", serverVersion: "v1.34.1", sourceState: "mock" },
+    snapshotCluster: { id: CLUSTER_ID, context: "sentinel-snapshot", name: "prod.k8s.example.com", serverVersion: "v1.34.1" },
     rulesVersion: 1,
     addedCheck: "checked",
     uncomparable: [
@@ -536,7 +536,7 @@ export const K8S_TRASH: K8sTrashResponse = {
       snapshotAt: "2026-09-01T00:00:00.000Z",
       deletedAt: "2026-09-10T01:02:03.000Z",
       label: "옛 스냅샷",
-      cluster: { context: "sentinel-snapshot", name: "prod-eks" },
+      cluster: { context: "sentinel-snapshot", name: "prod.k8s.example.com" },
       files: ["data", "prod", "metadata.json"],
       fileCount: 30,
       sizeBytes: 120000,

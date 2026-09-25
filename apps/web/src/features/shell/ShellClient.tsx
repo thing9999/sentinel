@@ -12,6 +12,7 @@ import {
   Banner,
   ConnectionBanner,
   ConnectionIndicator,
+  DEFAULT_NAV_FOOTER_ITEMS,
   ErrorState,
   SideNav,
   ThemeMenu,
@@ -21,6 +22,8 @@ import {
 import { useNow } from "@/components/ui/hooks";
 import { getApiBaseUrl } from "@/lib/api";
 
+import { useBadgeFallback, useTabTitleCount } from "../alerts/badge";
+import { useLogsAvailability } from "../logs/useLogsEnabled";
 import { deriveConnectionView } from "../stream/connection-view";
 import { useStreamClient, useStreamStore } from "../stream/StreamProvider";
 import { STALE_AFTER_MS, watchStale } from "../stream/stale";
@@ -56,6 +59,20 @@ export function ShellClient({ children }: { children: ReactNode }) {
       : null
     : null;
 
+  // 로그 기능이 꺼져 있으면 사이드바 `로그` 항목을 감춘다 (logs.md 0절). 값은 문서 하나에 한 번만 조회된다
+  const logs = useLogsAvailability();
+
+  /**
+   * 알림 배지(사이드바 + 탭 제목). `alerts` 토픽은 모든 페이지가 구독하고 **목록은 오지 않는다**(alerts.md 6.1).
+   * 스트림이 아직 배지를 주지 않았을 때만 `GET /api/alerts/badge`를 한 번 부른다(계약 2.3 폴백).
+   * 끊겨도 **0으로 내리지 않는다** — 마지막 값을 그대로 쓰고 문구에 기준 시각만 붙인다.
+   */
+  const alertsState = stream.alerts;
+  const fallbackBadge = useBadgeFallback(!alertsState.loaded && connection.apiReachable !== false);
+  const alertsBadge = alertsState.loaded ? alertsState.badge : (fallbackBadge ?? alertsState.badge);
+  const alertsLoaded = alertsState.loaded || fallbackBadge !== null;
+  useTabTitleCount(alertsLoaded ? alertsBadge.unreadCount : 0);
+
   const lastEventIso = stream.lastEventAt ? new Date(stream.lastEventAt).toISOString() : null;
   // 스냅샷 메뉴는 kube 출처와 무관하다: heartbeat 무수신만 끊김으로 본다 (서버 stale 은 menu.status.stale)
   const heartbeatStale = stream.lastHeartbeatAt !== null && now - stream.lastHeartbeatAt > STALE_AFTER_MS.watch;
@@ -64,6 +81,9 @@ export function ShellClient({ children }: { children: ReactNode }) {
     watchStale(stream, now).stale && Boolean(overview),
     stream.snapshotMenu?.menu,
     heartbeatStale && Boolean(stream.snapshotMenu),
+    { badge: alertsBadge, loaded: alertsLoaded, streamDown: view.showBanner },
+    // `LOGS_ENABLED=false`면 사이드바 `로그` 항목도 사라진다(logs.md 0절). 서버 값 하나로만 판단한다
+    logs.enabled,
   );
 
   // 최초 연결이 한 번도 안 됐고 API 가 응답하지 않으면 페이지 전체 ErrorState (shell.md 5절)
@@ -111,6 +131,7 @@ export function ShellClient({ children }: { children: ReactNode }) {
       nav={
         <SideNav
           items={navItems}
+          footerItems={DEFAULT_NAV_FOOTER_ITEMS}
           currentPath={pathname}
           collapsed={collapsed}
           onToggleCollapsed={() => navStore.set(!collapsed)}

@@ -122,7 +122,7 @@ npm run export --prefix deploy/aws-snapshot -- --dry-run
 npm run export --prefix deploy/aws-snapshot
 
 # 플래그로 .env 값 덮어쓰기
-npm run export --prefix deploy/aws-snapshot -- --region ap-northeast-2 --search-filter sentinel-prod --services EKS,EC2,VPC,IAM
+npm run export --prefix deploy/aws-snapshot -- --region ap-northeast-2 --search-filter sentinel-prod --services EC2,VPC,IAM,ELBv2,AutoScaling
 # 다른 설정 파일 사용 (상대 경로는 명령을 친 폴더 기준)
 npm run export --prefix deploy/aws-snapshot -- --config deploy/aws-snapshot/.env.prod --dry-run
 # 도움말
@@ -138,7 +138,7 @@ npm run export --prefix deploy/aws-snapshot -- --help
 | `AWS_REGION` | **필수** | 조회할 리전. 비우면 오류(former2는 리전을 안 주면 `~/.aws/config` default 리전을 쓰기 때문) |
 | `SNAPSHOT_SEARCH_FILTER` | (없음) | 리소스 JSON에 이 문자열이 들어간 것만. `,`=OR, `&`=AND. 비우면 경고 후 전체 |
 | `SNAPSHOT_REGEX_FILTER` | (없음) | 정규식 필터 |
-| `SNAPSHOT_SERVICES` | (없음=전체) | 포함할 서비스. 예시 값은 EKS 구성 권장 목록 |
+| `SNAPSHOT_SERVICES` | (없음=전체) | 포함할 서비스. 예시 값은 kOps 클러스터 구성 권장 목록(EC2·VPC·IAM·ELBv2·AutoScaling·Route53) |
 | `SNAPSHOT_EXCLUDE_SERVICES` | (없음) | 추가로 뺄 서비스 |
 | `SNAPSHOT_ALLOW_SENSITIVE_SERVICES` | `false` | 위 "기본 제외" 끄기 (비권장) |
 | `SNAPSHOT_INCLUDE_DEFAULT_RESOURCES` | `false` | 기본 VPC·기본 서브넷 등 포함 |
@@ -169,7 +169,7 @@ npm run export --prefix deploy/aws-snapshot -- --help
   "region": "ap-northeast-2",
   "profile": "sentinel-snapshot",
   "searchFilter": "sentinel-prod",
-  "services": { "mode": "include", "list": ["EKS", "EC2", "VPC"] },
+  "services": { "mode": "include", "list": ["EC2", "VPC", "AutoScaling"] },
   "cfnDeletionPolicy": "Retain",
   "former2": { "version": "0.2.83", "args": ["generate", "--output-cloudformation", "<snapshot>/cloudformation.yml", "..."] },
   "account": { "masked": true, "ids": ["********9012"], "note": "템플릿 안의 ARN 에는 계정 ID 가 원문으로 남아 있습니다" },
@@ -230,19 +230,39 @@ Former2 결과는 "계정 안에 있는 것을 전부 나열한 것"이지 "다�
 
 1. **새 브랜치·새 폴더에서 작업**한다. **복원용 손질**은 `snapshots/<시각>/`의 원본이 아니라 복사본에서 한다(예: `infra/restore/<날짜>/`로 복사한 뒤 손질).
    예외: 커밋 전 **비밀값 정리와 검토 주석(`# snapshot-scan: allow`)** 은 원본에서 한다(대시보드 "AWS 스냅샷" 메뉴의 템플릿 편집이나 편집기로). 원본은 "내보낸 그대로 + 비밀값만 뺀 기록"으로 남긴다.
-2. **AWS·EKS가 자동으로 만든 리소스를 지운다.** 그대로 두면 중복 생성되거나, 적용 후 EKS가 다시 만들면서 충돌한다.
-   - EKS 관리형 노드그룹이 만든 **Auto Scaling Group, Launch Template**(`eks-…`), 노드 **EC2 인스턴스, EBS 볼륨**
-   - EKS가 만든 **클러스터 보안 그룹**(`eks-cluster-sg-…`), 노드 **ENI**, VPC CNI가 붙인 보조 ENI
-   - Kubernetes `Service type=LoadBalancer`/Ingress(AWS Load Balancer Controller)가 만든 **ELB/ALB/NLB, Target Group, Listener, 보안 그룹**
-     → 이것들은 클러스터 안 매니페스트가 다시 만든다
-   - PVC(EBS CSI)가 만든 **EBS 볼륨**
-   - 기본 VPC·기본 서브넷(`SNAPSHOT_INCLUDE_DEFAULT_RESOURCES=false`면 원래 없음), `AWSServiceRoleFor…` 서비스 연결 역할
-   - 판단 기준: 태그 `eks:cluster-name`, `eks:nodegroup-name`, `kubernetes.io/cluster/<이름>`, `elbv2.k8s.aws/cluster`, `kubernetes.io/created-for/pvc/name`, `aws:autoscaling:groupName`, `aws:cloudformation:stack-name`(다른 스택 소유)
+2. **kOps·쿠버네티스가 자동으로 만든 리소스를 지운다.** 그대로 두면 중복 생성되거나, 적용 후 kOps·컨트롤러가 다시 만들면서 충돌한다.
+   > kOps 클러스터의 **단일 진실은 S3 state store의 `Cluster`/`InstanceGroup` 객체**이고, 아래 리소스들은 그 **결과물**이다.
+   > 클러스터 자체를 되살리는 것은 `kops create -f`(다음 범위, `deploy/kops-snapshot/`)의 몫이지 이 템플릿의 몫이 아니다.
+   >
+   > ⚠️ **이 목록은 kOps 공식 문서·소스에서 확인한 사실(`docs/specs/kops-support.md` 0.2 F1~F9)과 명세를 근거로 쓴 것이고, 실제 kOps 클러스터에서 대조하지 않았다.**
+   > 아래 **`[확인 필요]` 표시가 붙은 이름·태그는 추정**이다. 지우기 전에 **실제 태그·이름을 먼저 확인**하라 — 이름이 틀리면
+   > 지워야 할 것을 못 지우거나(중복 생성) **엉뚱한 것을 지운다.** 확인한 값은 이 목록을 고쳐 표시를 떼고 기록한다.
+
+   | 지울 것 | 확인 상태 |
+   |---|---|
+   | kOps InstanceGroup이 만든 **Auto Scaling Group, Launch Template**(InstanceGroup 1개 = ASG 1개) | 확인됨 (F4) |
+   | 마스터·워커 **EC2 인스턴스**, 루트 **EBS 볼륨**, 마스터의 **etcd 볼륨**(main/events, 마스터당 2개·기본 gp3 20GB) | 확인됨 (F6) |
+   | kOps가 만든 **보안 그룹**, 노드 **ENI**, CNI가 붙인 보조 ENI | **[확인 필요]** 이름 규칙 미확인 (`masters.<클러스터>`·`nodes.<클러스터>` **추정**) |
+   | **API 서버 앞단 로드밸런서**와 그 Target Group·Listener (기본 class는 NLB) | class만 확인됨 (F7). **[확인 필요]** 이름·`Name` 태그 규칙 미확인 (명세 U2 — 대시보드 비용 추정에서도 같은 항목이 미확인이다) |
+   | Kubernetes `Service type=LoadBalancer`/Ingress(AWS Load Balancer Controller)가 만든 **ELB/ALB/NLB, Target Group, Listener, 보안 그룹** → 클러스터 안 매니페스트가 다시 만든다 | 확인됨 |
+   | PVC(EBS CSI)가 만든 **EBS 볼륨** | 확인됨 |
+   | kOps가 만든 **Route53 레코드** | **[확인 필요]** `api.<클러스터>` **추정**(명세 3.6.3 "보통"). `--dns=none` 구성이면 **레코드가 아예 없다**(F9) |
+   | 기본 VPC·기본 서브넷(`SNAPSHOT_INCLUDE_DEFAULT_RESOURCES=false`면 원래 없음), `AWSServiceRoleFor…` 서비스 연결 역할 | 확인됨 |
+
+   **지우면 안 되는 것**
+   - **kOps state store S3 버킷** — 클러스터 정의(`Cluster`/`InstanceGroup`)가 들어 있고 **클러스터보다 오래 산다.** 버킷을 여러 클러스터가 함께 쓰기도 한다. "자동 생성 리소스" 흐름을 따라가다 이걸 지우면 **클러스터 설계도가 통째로 사라진다.**
+
+   **판단 기준 태그**
+   - `kubernetes.io/cluster/<이름>` — kOps가 자기가 만든 리소스에 붙인다 (확인됨, F3)
+   - `kops.k8s.io/instancegroup` — InstanceGroup 이름 (확인됨, F2)
+   - `elbv2.k8s.aws/cluster`, `kubernetes.io/created-for/pvc/name`, `aws:autoscaling:groupName`, `aws:cloudformation:stack-name`(다른 스택 소유) — 확인됨
+   - `k8s.io/role/*` — **[확인 필요]** 역할 태그 접두어의 실제 문자열을 kOps 소스에서 확인하지 못했다 (명세 U3). **이 태그만으로 마스터/워커를 가르지 말 것**
 3. **하드코딩된 ID를 참조로 바꾼다.** `vpc-…`, `subnet-…`, `sg-…`, 계정 ID, AMI ID를 `!Ref`/파라미터(CFN), 리소스 참조/`variable`(TF)로.
 4. **비밀값 자리는 참조로.** 5장 참고. 비밀값 자체는 별도 보관소에서 옮긴다(8장).
 5. **읽기 전용 속성·상태 값 제거.** 생성 시각, ARN, 상태 등 former2가 넣었지만 적용할 때 거부되는 속성.
 6. **Terraform provider 버전 올리기.** former2는 `hashicorp/aws ~> 3.0`을 적는다. 현재 쓰는 provider 버전으로 바꾸고 `terraform validate`로 속성 이름 변경을 확인한다.
-7. EKS 클러스터 버전·애드온 버전이 지금 지원되는 버전인지 확인한다(스냅샷 이후 지원이 끝났을 수 있음).
+7. **클러스터 자체(kOps `Cluster`/`InstanceGroup`)는 이 템플릿에 없다.** Former2는 AWS 리소스만 담고 kOps의 의도(etcd 볼륨 설정, CNI 선택, kubelet·apiserver 플래그, nodeLabels/taints, rollingUpdate 등)는 표현하지 못한다. 그 층은 **다음 범위인 `deploy/kops-snapshot/`**에서 다룬다(`docs/specs/kops-support.md` 8장). 지금은 클러스터를 먼저 `kops`로 만든 뒤, 이 템플릿에서 **클러스터가 만들지 않는 주변 리소스만** 골라 적용한다.
+8. 쿠버네티스 버전이 아직 커뮤니티 지원 구간인지 확인한다(스냅샷 이후 지원이 끝났을 수 있음).
 
 ### 7.2 이미 있는 리소스: 새로 만들지 말고 import
 "설정이 틀어져서 되돌린다", "IaC 관리로 편입한다"처럼 **리소스가 아직 있으면 절대 새로 만들지 않는다.** import로 관리 대상에 넣은 뒤 차이만 적용한다.
@@ -292,7 +312,7 @@ aws cloudformation describe-change-set --stack-name sentinel-infra --change-set-
 aws cloudformation execute-change-set --stack-name sentinel-infra --change-set-name create-1    # 승인 후
 ```
 - `aws cloudformation deploy`처럼 change set을 바로 실행하는 명령은 쓰지 않는다.
-- 큰 템플릿은 네트워크(VPC) → IAM → EKS 클러스터 → 노드그룹 순서로 **여러 스택으로 나눠** 단계별로 적용한다(템플릿 크기 제한·실패 범위 축소).
+- 큰 템플릿은 네트워크(VPC) → IAM → 주변 리소스 순서로 **여러 스택으로 나눠** 단계별로 적용한다(템플릿 크기 제한·실패 범위 축소). **클러스터(kOps)는 이 순서에 들어가지 않는다** — `kops`로 먼저 만든다(7.1 7번).
 
 **Terraform: plan → 검토 → apply**
 ```bash
@@ -304,7 +324,7 @@ terraform apply tfplan   # 승인 후
 - `terraform apply -auto-approve`는 쓰지 않는다.
 
 ### 7.4 적용 후
-1. `aws eks update-kubeconfig --name <클러스터>` 후 클러스터 접속 확인
+1. 클러스터 접속 확인. 대시보드는 **admin kubeconfig를 쓰지 않는다** — `deploy/rbac.yaml`의 ServiceAccount 토큰만 담은 kubeconfig를 쓴다(루트 `README.md` "권한" 참고)
 2. 쿠버네티스 리소스 적용: `kubectl apply -f deploy/rbac.yaml` 등 `deploy/` 매니페스트 (8장)
 3. 클러스터 안 Postgres 데이터 복원 (8장)
 4. 대시보드로 노드·파드·DB 상태가 정상인지 확인
@@ -317,7 +337,8 @@ terraform apply tfplan   # 승인 후
 | 클러스터 안 Postgres(StatefulSet) **데이터** | 못 담음 | 논리 백업: 데이터베이스별 `pg_dump -Fc` + 역할·권한 같은 전역 객체 `pg_dumpall --globals-only`. 컨테이너 안에서 `-f`로 파일을 만든 뒤 `kubectl cp`로 가져온다(**Windows PowerShell의 `>` 리다이렉트로 받지 않는다** — 바이너리 덤프가 깨질 수 있음). 비밀번호는 명령줄 인자로 넘기지 않는다. 덤프는 git·스냅샷 폴더 **밖**(S3 등)에 암호화해 보관. 또는 PVC의 **EBS 볼륨 스냅샷**(크래시 일관성만, VolumeSnapshot은 snapshot-controller 필요). 복원 순서 — 논리 백업: Secret 다시 만들기 → 매니페스트 적용 → 빈 StatefulSet 기동 → `psql`로 전역 객체 → `pg_restore`(같거나 더 새 메이저 버전) / 볼륨 스냅샷: Secret → StatefulSet보다 **먼저** 스냅샷에서 PVC(`<템플릿>-<sts>-<순번>`, 같은 AZ) → 나머지 매니페스트 → StatefulSet 기동. 자세한 절차는 `deploy/k8s-snapshot/README.md` 8장. PITR은 범위 밖 |
 | 비밀값 (DB 비밀번호, 모니터링 계정, API 키, kubeconfig) | 일부러 제외 | Secrets Manager·비밀번호 관리자 등 별도 보관소. git에 넣지 않는다. 템플릿에는 참조만 |
 | S3 객체, DynamoDB 항목 등 **데이터** | 설정만 담음 | 서비스별 백업(AWS Backup, S3 복제 등) |
-| EKS 애드온 안의 설정, Helm 릴리스 | 애드온 이름·버전 정도 | Helm values·매니페스트를 git으로 관리 |
+| **kOps `Cluster`/`InstanceGroup` 정의** (etcd 볼륨 설정, CNI 선택, kubelet·apiserver 플래그, nodeLabels·taints, rollingUpdate) | **못 담음** — Former2는 결과물(ASG·EC2·LB)만 본다 | S3 state store가 단일 진실. 파일로 남기는 것은 **다음 범위**(`deploy/kops-snapshot/`, `docs/specs/kops-support.md` 8장) |
+| 클러스터 애드온 설정, Helm 릴리스 | 이름·버전 정도 | Helm values·매니페스트를 git으로 관리 |
 | 계정 수준 설정 (Organizations SCP, SSO 권한 세트 일부, 서비스 할당량) | 일부만/실험적 | 별도 문서화 |
 
 ## 9. 문제 해결

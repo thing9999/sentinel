@@ -89,7 +89,7 @@ export class MockClusterService
     this.state.resetTracking();
     this.ingestor.reset();
     store.info =
-      s === 'no-cluster'
+      s === 'no-cluster' || s === 'kube-auth-failed'
         ? { name: null, version: null, region: null }
         : { ...w.info };
     for (const n of w.namespaces) store.namespaces.add(n);
@@ -105,7 +105,7 @@ export class MockClusterService
       store.ingresses.set(podKey(x.namespace, x.name), x);
     for (const x of w.pdbs) store.pdbs.set(podKey(x.namespace, x.name), x);
     for (const x of w.hpas) store.hpas.set(podKey(x.namespace, x.name), x);
-    store.initialSyncDone = s !== 'no-cluster';
+    store.initialSyncDone = s !== 'no-cluster' && s !== 'kube-auth-failed';
     store.lastSyncAt = new Date(now).toISOString();
 
     // 재시작·OOM 이력 (최근 1시간에 보이도록)
@@ -148,6 +148,26 @@ export class MockClusterService
         lastSuccessAt: null,
         lastAttemptAt: at,
       });
+    } else if (s === 'kube-auth-failed') {
+      // 토큰 만료: 조회가 401 → unavailable. **mock 데이터로 대체하지 않는다**(common.md 2.4)
+      this.registry.update('kube', {
+        state: 'unavailable',
+        lastSuccessAt: new Date(now - 6 * 60_000).toISOString(),
+        lastAttemptAt: at,
+        error: {
+          code: 'KUBE_AUTH_FAILED',
+          message: '인증 실패 — 토큰이 만료됐을 수 있습니다',
+        },
+      });
+      this.registry.update('metrics', {
+        state: 'unavailable',
+        lastSuccessAt: new Date(now - 6 * 60_000).toISOString(),
+        lastAttemptAt: at,
+        error: {
+          code: 'KUBE_AUTH_FAILED',
+          message: '인증 실패 — 토큰이 만료됐을 수 있습니다',
+        },
+      });
     } else if (s === 'kube-stale') {
       this.registry.update('kube', {
         state: 'stale',
@@ -180,7 +200,7 @@ export class MockClusterService
     }
 
     // 최근 1시간 추이 채우기
-    if (s !== 'no-cluster') {
+    if (s !== 'no-cluster' && s !== 'kube-auth-failed') {
       for (let i = (BACKFILL_MIN * 60_000) / TICK_MS; i >= 0; i--) {
         this.collect(now - i * TICK_MS, i === 0);
       }
@@ -193,7 +213,8 @@ export class MockClusterService
   private collect(at: number, emit = true): void {
     const w = this.world;
     if (!w) return;
-    if (this.scenario === 'no-cluster') return;
+    if (this.scenario === 'no-cluster' || this.scenario === 'kube-auth-failed')
+      return;
     if (this.scenario === 'no-metrics') {
       this.ingestor.fail(
         {

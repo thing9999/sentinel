@@ -3,6 +3,7 @@
 - 작성: planner, 2026-09-19
 - 상태: 초안 (열린 질문 없음. Q1~Q4 결정됨 2026-09-19, 사용자: 모두 권장안)
 - 관련 문서: `CLAUDE.md`(조회 전용·RBAC 목록·비밀값 규칙·기능 4 결정), `docs/specs/aws-snapshot-manager.md`(이하 **ASM**. 목록·상세·편집·휴지통 규칙의 원본), `docs/api/aws-snapshot-manager.md`(이하 **ASM-API**), `docs/design/aws-snapshot-manager.md`, `deploy/aws-snapshot/README.md`·`lib/*.mjs`(CLI 패턴 원본), `deploy/rbac.yaml`(대시보드 RBAC), `docs/specs/cluster-status.md`, `docs/api/common.md`
+- **갱신: 2026-09-24 (kops-support).** 대상 환경이 EKS → kOps로 바뀌면서 U6(대상 환경), 3.2(권한 연결 방법), 3.3(클러스터 이름·서버 버전 예시), 3.4·3.5(자동 생성 객체·시스템 네임스페이스 기본값), 7절 문구가 수정됐다. 근거는 **`docs/specs/kops-support.md` 9절**.
 - 이 기능은 세 부분이다.
   1. **CLI** `deploy/k8s-snapshot/`: 사람이 별도 kubeconfig 컨텍스트로 네임스페이스별 리소스를 YAML로 내보낸다(대시보드 밖 도구, `deploy/aws-snapshot`과 같은 성격).
   2. **스냅샷 관리 화면**: 기존 "AWS 스냅샷" 메뉴를 "스냅샷"으로 넓혀 AWS / Kubernetes 탭. Kubernetes 탭의 목록·상세·편집·휴지통은 ASM 규칙을 그대로 쓴다.
@@ -16,7 +17,8 @@
 - U3. 드리프트: 저장된 k8s 스냅샷 vs 현재 클러스터. 대시보드의 기존 읽기 전용 RBAC 범위 안에서만 비교, RBAC 밖 종류는 "비교 불가". 추가/삭제/변경 리소스와 필드 단위 diff. 기본값 필드로 인한 가짜 차이를 줄이는 방법 포함.
 - U4. 대시보드는 클러스터·AWS에 쓰지 않는다. 적용 버튼 없음(사용자가 직접 `kubectl apply`), 내보내기 버튼 없음(CLI만). **대시보드 RBAC는 늘리지 않는 것이 기본 전제**.
 - U5. mock 모드: 예시 k8s 스냅샷과 예시 드리프트.
-- U6. 대상 환경: EKS + 클러스터 안 Postgres StatefulSet. Postgres 데이터·PV 데이터 백업은 범위 밖(안내만).
+- U6. 대상 환경: **kOps 클러스터**(EC2 컨트롤 플레인) + 클러스터 안 Postgres StatefulSet. Postgres 데이터·PV 데이터 백업은 범위 밖(안내만). (2026-09-24 변경 — 이전은 "EKS + 클러스터 안 Postgres StatefulSet", `kops-support` 9절.)
+  - kOps 클러스터의 **설계도**(S3 state store의 `Cluster`·`InstanceGroup` 객체)는 이 CLI가 담지 않는다. 그 층은 `deploy/kops-snapshot/`로 예약돼 있고 **다음 범위**다(`kops-support` 8절). 스냅샷 메뉴가 나중에 탭을 하나 더 받을 수 있다.
 - U7. 사용자가 운영 매니페스트를 git으로 관리하는지 모른다 → 스냅샷이 형상관리 출발점이 될 수 있다.
 
 ### 0.2 가정 (다르면 수정)
@@ -26,7 +28,7 @@
 
 ## 1. 배경 / 목표
 
-- **누가**: EKS 운영자. 클러스터 안 워크로드(Postgres StatefulSet 포함)의 설정을 기록·복원하고 싶은 사람.
+- **누가**: kOps 클러스터 운영자. 클러스터 안 워크로드(Postgres StatefulSet 포함)의 설정을 기록·복원하고 싶은 사람.
 - **왜**
   - `deploy/aws-snapshot`(Former2)은 AWS 설정만 담고 쿠버네티스 리소스는 담지 못한다(README 8장). 클러스터를 다시 만들거나 설정이 틀어졌을 때 "그때 클러스터 안이 어땠는지" 기록이 없다.
   - 운영 매니페스트를 git으로 관리하는지 모른다(U7). `kubectl edit`·`kubectl scale`·Helm 업그레이드로 클러스터가 기록과 달라져도 알 방법이 없다.
@@ -75,7 +77,8 @@
 ### 3.2 접속: 대시보드와 분리된 사람용 컨텍스트
 - **컨텍스트는 필수 설정**이다(`KUBE_CONTEXT`, 또는 플래그). 비우면 종료코드 2. kubeconfig의 current-context를 암묵적으로 쓰지 않는다(엉뚱한 클러스터를 긁는 것을 막는다. aws-snapshot의 "AWS_REGION 필수"와 같은 이유).
 - kubeconfig 경로는 설정으로 줄 수 있다(`KUBECONFIG` 규칙과 같게, 기본은 사용자 kubeconfig).
-- 권한: README에 **내보내기 전용 읽기 역할 예시**(ClusterRole + 바인딩, 대상 종류의 get/list만, `secrets` 없음 — Q1 결정)를 둔다. 적용은 사람이 한다. EKS에서는 IAM 주체를 access entry(또는 aws-auth)로 이 역할에 연결하는 방법을 안내한다.
+- 권한: README에 **내보내기 전용 읽기 역할 예시**(ClusterRole + 바인딩, 대상 종류의 get/list만, `secrets` 없음 — Q1 결정)를 둔다. 적용은 사람이 한다. 연결 방법은 **ClusterRole + 사람 사용자/그룹(또는 전용 ServiceAccount)에 대한 ClusterRoleBinding**으로 안내한다. (2026-09-24 변경 — 이전 문구는 "EKS에서는 IAM 주체를 access entry(또는 aws-auth)로 연결"이었다. **kOps에는 access entry·aws-auth가 없다.** `kops-support` 9절)
+- `kops export kubeconfig --admin`으로 만든 **admin kubeconfig를 이 CLI에 쓰지 않는다.** cluster-admin 인증서가 들어 있어 "읽기 전용"이 권한으로 막히지 않는다(`kops-support` 3.6.1). README에 금지 문구를 둔다.
 - 대시보드 ServiceAccount 토큰이나 `deploy/rbac.yaml`의 `sentinel-readonly` 역할을 쓰라고 안내하지 않는다(권한 목록이 다르고, 대시보드 권한을 넓힐 이유를 만들지 않기 위해).
 - 컨텍스트 이름·클러스터 식별값만 기록하고, kubeconfig 경로·서버 URL·토큰·인증서는 `metadata.json`·로그에 남기지 않는다.
 
@@ -83,8 +86,8 @@
 - `metadata.json`에 다음을 기록한다.
   - `cluster.id`: `kube-system` 네임스페이스의 UID (쿠버네티스에서 흔히 쓰는 클러스터 식별값. 비밀값 아님)
   - `cluster.context`: 컨텍스트 이름(원문)
-  - `cluster.name`: EKS 클러스터 이름을 알 수 있으면(컨텍스트·kubeconfig의 클러스터 항목에서) 원문, 모르면 `null`
-  - `cluster.serverVersion`: 쿠버네티스 서버 버전(예 `v1.30.4-eks-…`)
+  - `cluster.name`: 클러스터 이름을 알 수 있으면(컨텍스트·kubeconfig의 클러스터 항목에서) 원문, 모르면 `null`. kOps에서는 보통 FQDN(`prod.k8s.example.com`)이라 길다 — 화면에서는 가운데 말줄임 + 툴팁
+  - `cluster.serverVersion`: 쿠버네티스 서버 버전(예 `v1.30.4`. kOps에는 `-eks-…` 같은 배포판 접미어가 붙지 않는다)
 - 대시보드는 자기가 연결된 클러스터의 `kube-system` UID(대시보드 RBAC `namespaces` get으로 읽을 수 있음)와 `cluster.id`를 비교해 같은 클러스터인지 판단한다(4.6).
 
 ### 3.4 내보낼 리소스 종류
@@ -112,7 +115,7 @@
 | 종류 | 비고 |
 |---|---|
 | Job (batch) | CronJob이 만든 Job(ownerReferences 있음)은 켜도 제외. 한 번 실행용이라 기본 꺼짐 |
-| 클러스터 범위: ClusterRole, ClusterRoleBinding, StorageClass, IngressClass, PriorityClass | 클러스터 전체라 시스템 항목이 많다. 켜면 `system:` 접두어·`eks:` 접두어·쿠버네티스 기본 항목은 제외 규칙으로 뺀다(목록은 백엔드) |
+| 클러스터 범위: ClusterRole, ClusterRoleBinding, StorageClass, IngressClass, PriorityClass | 클러스터 전체라 시스템 항목이 많다. 켜면 `system:` 접두어·`eks:` 접두어(**EKS 잔재 — kOps 클러스터에는 매칭되는 객체가 없다. 다음 정리 때 삭제**)·쿠버네티스 기본 항목은 제외 규칙으로 뺀다(목록은 백엔드) |
 | PersistentVolume | 기본 꺼짐. 동적 프로비저닝 PV는 PVC가 다시 만든다 |
 | 사용자 지정 리소스(CRD 인스턴스) | 종류를 이름으로 지정할 때만(예 `targetgroupbindings.elbv2.k8s.aws`). 전체 CRD 자동 탐색은 하지 않는다 |
 
@@ -123,15 +126,15 @@
 | **Secret** | 값을 담지 않는다(U1). Secret 객체를 읽지 않고, 워크로드가 참조하는 Secret 이름만 `secret-refs.json`에 기록한다(**Q1 결정**) |
 | Pod, ReplicaSet, ControllerRevision, Endpoints, EndpointSlice, Event, Lease, Node, 메트릭 | 컨트롤러가 만들거나 런타임 상태 |
 | `metadata.ownerReferences`가 있는 객체(컨트롤러 소유) | 소유자가 다시 만든다(예: Deployment가 만든 ReplicaSet, CronJob이 만든 Job) |
-| 쿠버네티스·EKS가 자동으로 만든 객체 | `kube-root-ca.crt` ConfigMap, 토큰 없는 기본 `default` ServiceAccount, `kubernetes` Service(`default` 네임스페이스) 등. 목록은 백엔드가 정하고 README에 적는다 |
+| 쿠버네티스·애드온이 자동으로 만든 객체 | `kube-root-ca.crt` ConfigMap, 토큰 없는 기본 `default` ServiceAccount, `kubernetes` Service(`default` 네임스페이스), kOps 애드온(`kops-controller` 등)이 만든 객체. 목록은 백엔드가 정하고 README에 적는다 |
 
 - 종류 이름은 설정에서 대소문자 무시, 모르는 이름이면 종료코드 2(aws-snapshot의 "모르는 서비스 이름은 바로 오류"와 같은 이유: 오타가 조용히 무시되지 않게).
 - Helm이 관리하는 리소스(레이블 `app.kubernetes.io/managed-by: Helm`)도 내보낸다. `metadata.json`에 Helm 관리 리소스 수를 기록하고, 화면·README에 "Helm 관리 리소스는 `kubectl apply`보다 Helm으로 복원" 안내를 둔다. Helm 릴리스 Secret(`sh.helm.release.v1.*`)은 Secret이므로 제외.
 
 ### 3.5 네임스페이스 범위
 - 설정: 포함 목록 **또는** 제외 목록(둘 다 주면 종료코드 2).
-- 기본(둘 다 비움): **시스템 네임스페이스를 뺀 전체**. 시스템 기본 목록: `kube-system`, `kube-public`, `kube-node-lease`, `amazon-cloudwatch`(EKS 관측 애드온). `cluster-status` 가정 A6의 시스템 목록과 같게 맞춘다(설정 가능).
-- 시스템 네임스페이스를 포함 목록에 직접 적으면 내보낸다(경고 출력). EKS 애드온이 관리하는 리소스가 많아 복원 대상이 아님을 README에 안내.
+- 기본(둘 다 비움): **시스템 네임스페이스를 뺀 전체**. 시스템 기본 목록: `kube-system`, `kube-public`, `kube-node-lease` (2026-09-24 변경: EKS 관측 애드온 `amazon-cloudwatch`를 기본값에서 뺐다, AC-KOPS09). `cluster-status` 가정 A6의 시스템 목록과 같게 맞춘다(설정 가능).
+- 시스템 네임스페이스를 포함 목록에 직접 적으면 내보낸다(경고 출력). kOps 애드온과 컨트롤 플레인 static pod의 미러 파드가 관리하는 리소스가 많아 복원 대상이 아님을 README에 안내.
 - 존재하지 않는 네임스페이스를 포함 목록에 적으면 종료코드 2가 아니라 경고 + `metadata.json`에 기록(클러스터 상태의 문제이지 설정 오류가 아닐 수 있음). 결과가 0개면 종료코드 3.
 - `metadata.json`에 **범위 규칙**(포함/제외 목록, 시스템 제외 여부)과 **실제로 내보낸 네임스페이스 목록**을 모두 기록한다. 드리프트의 "추가됨" 판단(4.3)이 이 규칙을 쓴다.
 
@@ -297,7 +300,7 @@ CLI는 서버가 기본값을 채운 `spec`을 그대로 담으므로 같은 클
    - 파드 템플릿 어노테이션 `kubectl.kubernetes.io/restartedAt` (이유: "`kubectl rollout restart` 기록")
    - PVC `spec.resources.requests.storage`가 클러스터 쪽이 더 큼 (이유: "볼륨 확장") — 줄어든 경우는 변경으로 표시
    - Service `spec.ports[].nodePort`가 스냅샷에 없음 (이유: "자동 할당")
-   - 그 밖에 백엔드가 확인한 EKS·컨트롤러 변경(예: ALB 컨트롤러·EBS CSI가 붙이는 레이블·어노테이션)은 표에 추가하고 문서에 남긴다.
+   - 그 밖에 백엔드가 확인한 컨트롤러 변경(예: AWS LB 컨트롤러·EBS CSI·kOps 애드온이 붙이는 레이블·어노테이션)은 표에 추가하고 문서에 남긴다.
 6. **투명성**: 숨긴 차이는 개수("기본값 차이 12건 · 관리 필드 1건 숨김")와 함께 펼쳐 볼 수 있다. 숨긴 차이는 드리프트 상태·건수에 넣지 않는다.
 7. 규칙으로 걸러 내지 못한 가짜 차이는 사용자가 스냅샷 파일을 편집해 맞출 수 있다(원본 직접 편집, U2). 사용자별 무시 규칙 설정은 범위 밖(7절).
 
@@ -320,7 +323,7 @@ CLI는 서버가 기본값을 채운 `spec`을 그대로 담으므로 같은 클
 | **정상** | 비교 가능한 리소스에서 추가·삭제·변경 0건 (숨긴 차이는 무관) | "차이 없음 (비교 42개, 비교 불가 11개)" |
 | **주의** | 추가·삭제·변경 1건 이상 | "차이 3건 (변경 2 · 삭제 1)" |
 | **알 수 없음** | 대시보드 클러스터 연결 없음(`kube` 출처 `not_configured`/`unavailable`/`syncing`) | "클러스터 연결 없음" |
-| | 스냅샷 `cluster.id`가 대시보드 클러스터와 다름 | "다른 클러스터의 스냅샷 (staging-eks)" — 계산 버튼 비활성 |
+| | 스냅샷 `cluster.id`가 대시보드 클러스터와 다름 | "다른 클러스터의 스냅샷 (staging.k8s.example.com)" — 계산 버튼 비활성 |
 | | `cluster.id` 없음(메타 없음·손상·형식 다름) | "클러스터를 확인할 수 없음" — 계산하지 않음(**Q4 결정**) |
 | | 비교 가능 종류가 스냅샷에 하나도 없음 | "비교할 수 있는 리소스 없음" |
 | | 파일 상태가 알 수 없음(내보내기 진행 중 등) | "스냅샷 파일 확인 전" |
@@ -512,11 +515,13 @@ Kubernetes 탭 빈 상태와 "새 스냅샷 만들기 안내"에 복사 버튼�
 - Postgres 데이터·PV 내용 백업·복원, VolumeSnapshot 생성(안내만, 3.9).
 - 스냅샷끼리 비교(스냅샷 A vs B), 드리프트 알림(Slack 등), 드리프트 이력 그래프.
   - (2026-09-20 PM 결정) 스냅샷끼리 **식별값 수준**(생김·없어짐) 비교는 `docs/specs/snapshot-3d.md`에서 다룬다(1단계는 k8s만). 필드 비교와 드리프트 이력 그래프는 계속 범위 밖이다.
+  - (2026-09-25) `alerts` 기능이 생긴 뒤에도 **드리프트 알림은 그대로 범위 밖이다.** `docs/specs/alerts.md` 3.1의 알림 키 8개에 스냅샷·드리프트가 없고, `snapshotStore`·`k8sSnapshotStore` 출처의 알림도 명시적으로 범위 밖이다(`alerts` 6절). 드리프트를 사이드바 메뉴 상태에 넣지 않는다는 기존 결정도 그대로다.
 - 사용자별 드리프트 무시 규칙 설정 화면(규칙은 서버 표로만. 가짜 차이는 스냅샷 편집으로 맞춤).
 - git 연동(커밋·상태 표시), 스냅샷을 "운영 매니페스트 폴더"로 복사·변환하는 기능(README 안내만).
 - Helm 릴리스·values 내보내기, Kustomize 구조 생성, 여러 클러스터 동시 드리프트.
 - 새 리소스 파일 추가, 파일 이름 바꾸기, 파일 단위 삭제, 여러 스냅샷 한꺼번에 삭제.
-- EKS에 배포된 대시보드에서 이 기능 쓰기(스냅샷 폴더 없음 → 설정 없음).
+- 클러스터에 배포된 대시보드에서 이 기능 쓰기(스냅샷 폴더 없음 → 설정 없음).
+- kOps 클러스터의 설계도(S3 state store의 `Cluster`·`InstanceGroup`) 스냅샷 — `deploy/kops-snapshot/`으로 폴더 이름만 예약하고 **다음 범위**(`kops-support` 8절).
 - 어드바이저에 k8s 스냅샷·드리프트를 넘기는 것.
 - CLI의 드리프트 명령(대시보드에서만).
 

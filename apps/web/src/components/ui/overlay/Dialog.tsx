@@ -20,6 +20,14 @@ export interface DialogProps {
   /** loading 중 확인 버튼 문구 */
   confirmLoadingLabel?: string;
   cancelLabel?: string;
+  /**
+   * (2026-09-25 추가) 취소(닫기) 버튼 비활성 — 예: 테스트 발송 **전송 중**(settings.md 4.3 "`보내기` loading, `취소` 비활성,
+   * 대화상자는 닫히지 않는다"). 버튼은 `aria-disabled`(포커스 유지). 이 동안에는 **Esc·배경 클릭으로도 닫히지 않는다**
+   * (`onClose` 를 부르지 않는다) — 버튼만 막고 Esc 로 닫히면 같은 규칙이 두 갈래가 된다.
+   */
+  cancelDisabled?: boolean;
+  /** 취소 비활성 사유: 툴팁 + aria-describedby. 예 `보내는 중에는 닫을 수 없습니다.` */
+  cancelDisabledReason?: string;
   tone?: "default" | "danger";
   size?: "sm" | "md";
   /** 확인 버튼 비활성(aria-disabled, 포커스 가능) (components.md 12.6) */
@@ -50,6 +58,8 @@ export function Dialog({
   confirmLoading = false,
   confirmLoadingLabel,
   cancelLabel = "닫기",
+  cancelDisabled = false,
+  cancelDisabledReason,
   tone = "default",
   size = "sm",
   confirmDisabled = false,
@@ -76,10 +86,14 @@ export function Dialog({
       body.querySelector<HTMLElement>(FOCUSABLE);
     target?.focus();
   }, [open, effectiveFocus]);
+  // 취소가 막힌 동안에는 Esc·배경 클릭도 닫지 않는다
+  const requestClose = () => {
+    if (!cancelDisabled) onClose();
+  };
   return (
     <ModalBase
       open={open}
-      onClose={onClose}
+      onClose={requestClose}
       labelledBy={titleId}
       describedBy={description ? descId : undefined}
       className={cx(styles.dialog, styles[`dialog-${size}`], className)}
@@ -99,7 +113,13 @@ export function Dialog({
           </div>
         ) : null}
         <div className={styles.dialogActions}>
-          <Button variant="secondary" onClick={onClose} autoFocus={effectiveFocus === "cancel"}>
+          <Button
+            variant="secondary"
+            onClick={requestClose}
+            disabled={cancelDisabled}
+            disabledReason={cancelDisabled ? cancelDisabledReason : undefined}
+            autoFocus={effectiveFocus === "cancel"}
+          >
             {cancelLabel}
           </Button>
           {confirmLabel ? (

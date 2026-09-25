@@ -1,12 +1,12 @@
 /**
  * 네임스페이스별 비용 배분 (순수 함수). 명세 aws-cost 3.2 규칙 1~7, 계약 3.2.
  *
- * 1. 노드 비용: 파드 몫 = 노드 시간당 × (CPU requests 비율 + 메모리 requests 비율) ÷ 2
+ * 1. 노드 비용: 파드 몫 = **워커** 노드 시간당 × (CPU requests 비율 + 메모리 requests 비율) ÷ 2
  * 2. 나머지 = 미할당(유휴)
  * 3. requests 없는 파드는 0 배분 + 경고
  * 4. PVC 볼륨 → PVC 네임스페이스
  * 5. LB → 서비스·인그레스 네임스페이스 (식별 불가 → 공용)
- * 6. EKS·노드 루트 볼륨·퍼블릭 IPv4 → 공용(클러스터)
+ * 6. 컨트롤 플레인(마스터 EC2 포함)·노드 루트 볼륨·퍼블릭 IPv4 → 공용(클러스터)
  * 7. 완료 파드(Succeeded/Failed) 제외
  * 단가 없는 리소스는 추정 합계에서 빠지므로 배분에서도 빠진다 (합계 일치).
  */
@@ -23,14 +23,11 @@ import type {
   PinnedRow,
 } from '../cost.types';
 
+/** env SYSTEM_NAMESPACES 기본값과 같다 (kOps 기준. EKS 관측 애드온·Karpenter 제거) */
 export const DEFAULT_SYSTEM_NAMESPACES = [
   'kube-system',
   'kube-public',
   'kube-node-lease',
-  'amazon-cloudwatch',
-  'amazon-guardduty',
-  'aws-observability',
-  'karpenter',
 ];
 
 export function isSystemNamespace(
@@ -46,11 +43,18 @@ interface Acc {
   node: number;
   storage: number;
   lb: number;
-  eks: number;
+  controlPlane: number;
   ipv4: number;
 }
-const zero = (): Acc => ({ node: 0, storage: 0, lb: 0, eks: 0, ipv4: 0 });
-const accTotal = (a: Acc) => a.node + a.storage + a.lb + a.eks + a.ipv4;
+const zero = (): Acc => ({
+  node: 0,
+  storage: 0,
+  lb: 0,
+  controlPlane: 0,
+  ipv4: 0,
+});
+const accTotal = (a: Acc) =>
+  a.node + a.storage + a.lb + a.controlPlane + a.ipv4;
 
 export function podRequestsMissing(p: InventoryPod): boolean {
   return (
@@ -88,11 +92,17 @@ export function computeAllocation(
   }
   const nodes = new Map(inventory.nodes.map((n) => [n.name, n]));
 
-  // 1~3. 노드
+  // 1~3. 노드 (워커만 배분한다)
   for (const row of estimate.resources.ec2) {
     if (row.usdPerHour === null) continue;
     const hourly = row.usdPerHour;
     const node = row.nodeName ? nodes.get(row.nodeName) : undefined;
+    // 마스터 EC2는 파드에 배분하지 않고 공용(클러스터)으로 (AC-KOPS15).
+    // 마스터 위 컨트롤 플레인 static pod에도 배분하지 않는다.
+    if (node?.role === 'control_plane') {
+      sharedCluster.node += hourly;
+      continue;
+    }
     const alloc = node?.allocatable;
     if (!node || !alloc || alloc.cpuMillicores <= 0 || alloc.memoryBytes <= 0) {
       unallocated.node += hourly;
@@ -136,9 +146,9 @@ export function computeAllocation(
     for (const n of namespaces) nsAcc(n).lb += l.usdPerHour / namespaces.length;
   }
 
-  // 6. EKS·IPv4
-  for (const e of estimate.resources.eks) {
-    if (e.usdPerHour !== null) sharedCluster.eks += e.usdPerHour;
+  // 6. 컨트롤 플레인 전체(마스터 EC2·etcd/루트 EBS·API LB·마스터 퍼블릭 IPv4) → 공용(클러스터)
+  for (const e of estimate.resources.controlPlane) {
+    if (e.usdPerHour !== null) sharedCluster.controlPlane += e.usdPerHour;
   }
   for (const i of estimate.resources.ipv4) {
     if (i.usdPerHour !== null) sharedCluster.ipv4 += i.usdPerHour;
@@ -205,7 +215,7 @@ export function computeAllocation(
       lbUsdPerHour: r6(a.lb),
     };
     if (withShared) {
-      breakdown.eksUsdPerHour = r6(a.eks);
+      breakdown.controlPlaneUsdPerHour = r6(a.controlPlane);
       breakdown.ipv4UsdPerHour = r6(a.ipv4);
     }
     pinned.push({

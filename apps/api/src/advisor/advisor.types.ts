@@ -105,7 +105,10 @@ export interface RunCounts {
 }
 
 export interface SnapshotSummary {
-  nodeCount: number;
+  /** 워커 노드 수 (구 nodeCount). 마스터를 포함하지 않는다 */
+  workerCount: number;
+  /** 마스터 노드 수 */
+  controlPlaneCount: number;
   workloadCount: number;
   pvcCount: number;
   loadBalancerCount: number;

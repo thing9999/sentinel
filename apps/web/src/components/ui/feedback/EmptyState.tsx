@@ -12,6 +12,12 @@ export interface EmptyStateProps {
   title: string;
   description?: ReactNode;
   action?: ReactNode;
+  /**
+   * 설명 아래 12px, caption `text.tertiary`, 최대 폭 400px (components.md 21.6).
+   * `description` 과 **다른 무게**로 놓이는 사실 한 줄에만 쓴다
+   * (알림 빈 상태의 `대시보드는 14:02:10까지 정상적으로 지켜보고 있습니다 · 감시 대상 8개`).
+   */
+  footer?: ReactNode;
   /** sm 높이 200px·아이콘 24px / lg 높이 320px·아이콘 40px / chart: 부모 영역 가운데, 아이콘 20px */
   size?: StateSize;
   /** 아이콘 색 (기본 text.tertiary) */
@@ -29,6 +35,7 @@ export function EmptyState({
   title,
   description,
   action,
+  footer,
   size = "sm",
   iconTone = "tertiary",
   headingLevel = "p",
@@ -41,6 +48,7 @@ export function EmptyState({
       <H className={styles.emptyTitle}>{title}</H>
       {description ? <div className={styles.emptyDesc}>{description}</div> : null}
       {action ? <div className={styles.emptyAction}>{action}</div> : null}
+      {footer ? <div className={styles.emptyFooter}>{footer}</div> : null}
     </div>
   );
 }

@@ -14,6 +14,7 @@ import { changeKey } from '../common/hash';
 import { ClusterQueryService } from './cluster-query.service';
 import { OverviewService } from './overview.service';
 import { ClusterStateService } from './state/cluster-state.service';
+import { CONTROL_PLANE_VOLATILE_KEYS } from './state/control-plane';
 import type { ClusterView } from './state/evaluate';
 import { MetricsStore } from './state/metrics-store';
 
@@ -26,6 +27,8 @@ const POD_OMIT = new Set([
   'observedSec',
 ]);
 const NONE = new Set<string>();
+/** 컨트롤 플레인 변경 감지 제외 키 — 기준과 이유는 state/control-plane.ts 참고 */
+const CP_OMIT = CONTROL_PLANE_VOLATILE_KEYS;
 
 type Entity = 'node' | 'workload' | 'pod' | 'event' | 'pvc';
 
@@ -50,6 +53,7 @@ export class ClusterTopicSource
     pvc: new Map(),
   };
   private summaryKey = '';
+  private controlPlaneKey = '';
   private subs: Subscription[] = [];
 
   constructor(
@@ -95,6 +99,7 @@ export class ClusterTopicSource
       pods: v.pods,
       events: v.events,
       pvcs: v.pvcs,
+      controlPlane: v.controlPlane,
     };
   }
 
@@ -108,6 +113,7 @@ export class ClusterTopicSource
     this.sent.event = new Map(v.events.map((x) => [x.key, changeKey(x)]));
     this.sent.pvc = new Map(v.pvcs.map((x) => [x.key, changeKey(x)]));
     this.summaryKey = this.summaryChangeKey(v);
+    this.controlPlaneKey = changeKey(v.controlPlane, CP_OMIT);
   }
 
   private summaryChangeKey(v: ClusterView): string {
@@ -185,6 +191,12 @@ export class ClusterTopicSource
         return { key, namespace, name: rest.join('/') };
       },
     );
+    // 컨트롤 플레인은 단일 객체 전체 교체 (새 토픽을 만들지 않는다 — 계약 8.2)
+    const ck = changeKey(v.controlPlane, CP_OMIT);
+    if (ck !== this.controlPlaneKey) {
+      this.controlPlaneKey = ck;
+      emit('cluster.controlplane.updated', v.controlPlane);
+    }
     const sk = this.summaryChangeKey(v);
     if (sk !== this.summaryKey) {
       this.summaryKey = sk;
@@ -291,7 +303,15 @@ export class MetricsTopicSource
       collectedAt: this.metrics.state.collectedAt ?? v.atIso,
       available: m.available,
       unavailableReason: m.unavailableReason,
-      cluster: { cpu: m.cpu, memory: m.memory, updatedAt: m.updatedAt },
+      // 계약 8.3: 사용량만 바뀐 것은 이 토픽으로 보낸다.
+      // 마스터 합계(= GET /api/cluster/metrics의 controlPlane)도 여기서 갱신한다
+      cluster: {
+        cpu: m.cpu,
+        memory: m.memory,
+        controlPlane: m.controlPlane,
+        scope: m.scope,
+        updatedAt: m.updatedAt,
+      },
       clusterPoint: last
         ? { ...last, t: new Date(last.t).toISOString() }
         : null,

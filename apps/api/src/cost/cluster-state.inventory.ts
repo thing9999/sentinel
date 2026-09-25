@@ -45,7 +45,7 @@ export function inventoryFingerprint(inv: ClusterInventorySnapshot): string {
   const nodes = inv.nodes
     .map(
       (n) =>
-        `${n.name}|${n.providerId ?? ''}|${n.instanceType ?? ''}|${n.capacityType ?? ''}|${n.zone ?? ''}|${n.nodeGroup ?? ''}`,
+        `${n.name}|${n.providerId ?? ''}|${n.instanceType ?? ''}|${n.capacityType ?? ''}|${n.zone ?? ''}|${n.nodeGroup ?? ''}|${n.role}`,
     )
     .sort();
   const pvcs = inv.pvcs

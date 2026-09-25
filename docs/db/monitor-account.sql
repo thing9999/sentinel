@@ -32,10 +32,30 @@
 -- 비밀번호는 SCRAM으로 저장 (PG14+ 기본값이지만 명시)
 SET password_encryption = 'scram-sha-256';
 
--- 이 세션의 문장이 서버 로그(log_statement=all/ddl)에 비밀번호째 남지 않도록
--- (superuser만 바꿀 수 있는 설정. 실패하면 psql이 멈추므로 권한 있는 계정으로 실행)
+-- ---------------------------------------------------------------------------
+-- 비밀번호가 서버 로그에 남지 않게 막는다. 세 줄 다 필요하고, 지우면 안 된다.
+-- ---------------------------------------------------------------------------
+-- 아래 ALTER ROLE 문장에는 비밀번호가 리터럴로 들어간다(%L). 그 문장이 서버 로그에 실리면
+-- 로그가 곧 비밀번호 사본이 되고, 대시보드의 로그 화면(docs/specs/logs.md)에서도 보인다.
+--
+--   * log_statement            : 'all'/'ddl'이면 성공한 문장도 남는다 → 'none'
+--   * log_min_duration_statement: 느린 쿼리 로그에 문장이 남는다 → 끈다(-1)
+--   * log_min_error_statement   : **기본값이 'error'라, 문장이 실패하면 원문이 그대로 남는다.**
+--       위 두 줄만으로는 못 막는다. 오타·권한 부족·연결 끊김으로 ALTER ROLE이 깨지는 순간
+--       비밀번호가 평문으로 파드 로그에 찍힌다(DBA 확인, 2026-09-24). → 'panic'으로 올린다.
+--
+-- 전부 `SET`이라 **이 psql 세션에만** 적용된다. 서버·역할·DB의 영구 설정(ALTER SYSTEM/DATABASE/ROLE)은
+-- 건드리지 않는다 — 모니터링 대상 DB에 쓰기를 하지 않는다는 원칙(CLAUDE.md) 때문이다.
+-- 세션이 끝나면 원래 값으로 돌아가고, 다른 접속의 로깅에는 아무 영향이 없다.
+--
+-- 진단을 잃지 않는다: ON_ERROR_STOP=1이라 오류는 psql이 실행한 사람의 화면에 그대로 뜬다.
+-- 가려지는 것은 "서버 로그에 남는 사본"뿐이다.
+--
+-- (셋 다 superuser만 바꿀 수 있다. 권한이 없으면 여기서 psql이 멈추므로 superuser로 실행한다 —
+--  권한 없는 계정으로 계속 진행돼 비밀번호가 로그에 남는 것보다 멈추는 편이 안전하다.)
 SET log_statement = 'none';
 SET log_min_duration_statement = -1;
+SET log_min_error_statement = 'panic';
 
 -- 1) 역할 생성 (없을 때만)
 SELECT format('CREATE ROLE %I LOGIN', :'monitor_role')

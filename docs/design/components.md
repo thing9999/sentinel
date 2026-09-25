@@ -4,7 +4,7 @@
 - 구현 위치: 퍼블리셔 `apps/web/src/components/ui/**`, 스타일 `apps/web/src/styles/**`
 - 차트(9절)는 프론트 영역(`apps/web/src/charts/**`)이다. 모양 규칙은 여기와 `status.md` 4절.
 - 토큰: `docs/design/tokens.json`. 상태·금액·표 규칙: `docs/design/status.md`. 셸: `docs/design/shell.md`.
-- 세 기능(`cluster-status`, `aws-cost`, `architecture-advisor`)에서 공통으로 쓰도록 묶었다. 기능 전용 컴포넌트는 10절(어드바이저), 11절(AWS 스냅샷), 14절(Kubernetes 스냅샷·드리프트), 16절(3D 구성도)에 따로 둔다. 12절은 AWS 스냅샷, 15절은 Kubernetes 스냅샷, 17절은 3D 구성도 때문에 기존 컴포넌트에 더한 props다.
+- 세 기능(`cluster-status`, `aws-cost`, `architecture-advisor`)에서 공통으로 쓰도록 묶었다. 기능 전용 컴포넌트는 10절(어드바이저), 11절(AWS 스냅샷), 14절(Kubernetes 스냅샷·드리프트), 16절(3D 구성도), **18절(컨트롤 플레인)**에 따로 둔다. 12절은 AWS 스냅샷, 15절은 Kubernetes 스냅샷, 17절은 3D 구성도, **19절은 `kops-support`** 때문에 기존 컴포넌트에 더한 props다.
 - 공통 타입:
 
 ```ts
@@ -386,7 +386,7 @@ props: `size`(12 | 16 | 20 | 40). 선 2px, `accent.default`, 회전 800ms linear
 `Column<T>`: `{ id; header: ReactNode; headerBadge?: ReactNode; width?: number; minWidth?: number; maxWidth?: number; align?: "left" \| "right" \| "center"; sortable?: boolean; render: (row) => ReactNode; numeric?: boolean; sticky?: "left" }`.
 
 ### 7.2 `ResourceName`
-props: `name`, `keepTail`(기본 16), `href?`, `copyable`(기본 true), `maxWidth`(px), `kind?`(`pod` | `node` | ...; node면 첫 `.` 앞만 표시). 가운데 말줄임·툴팁·복사: `status.md` 5.3.
+props: `name`, `keepTail`(기본 16), `href?`, `copyable`(기본 true), `maxWidth`(px), `kind?`(`pod` | `node` | ...; node면 첫 `.` 앞만 표시), **`logHref?`(2026-09-25, 21.10)**. 가운데 말줄임·툴팁·복사: `status.md` 5.3.
 
 ### 7.3 `KeyValueList` (상세 화면 메타)
 props: `items: { label; value: ReactNode; hint?: string }[]`, `columns`(1 | 2), `labelWidth`(기본 120px). 행 높이 최소 32px, 라벨 caption `text.secondary`, 값 body.
@@ -669,6 +669,14 @@ Kubernetes 스냅샷(추가): `git-compare`(드리프트 계산·탭 칩), `squa
 3D 종류 아이콘(추가, 2026-09-20 · `snapshot-3d.md` 4.10 · `KindIcon` 16.12): `hard-drive`(PVC·PV), `network`(Service), `door-open`(Ingress), `grid-2x2`(DaemonSet), `briefcase`(Job), `user-round`(ServiceAccount), `scroll-text`(Role·ClusterRole), `link`(RoleBinding·ClusterRoleBinding). 종류 아이콘으로 **재사용**: `boxes`(Deployment), `database`(StatefulSet), `timer`(CronJob), `copy`(ReplicaSet), `box`(Pod·대체), `settings-2`(ConfigMap), `key-round`(Secret), `trending-up`(HPA), `life-buoy`(PDB), `shield`(NetworkPolicy), `gauge`(ResourceQuota), `ruler`(LimitRange), `shapes`(CRD·사용자 지정), `folder`(Namespace 판), `globe`, `file-warning`, `circle-dashed`. lucide 버전에 `user-round`가 없으면 `user`, `grid-2x2`가 없으면 `layout-grid`. 기존 재사용: `file-question`(판 알약 `namespace.yaml 없음`), `box`(3D 보기 탭·블록), `layers`(층·범례), `globe`, `file-warning`, `eye-off`, `ship-wheel`, `square-dot`/`square-minus`/`square-plus`, `octagon-x`/`triangle-alert`, `key-round`, `git-compare`, `file-text`, `check` / `tilde`(확정·추정), `circle-help`, `chevrons-right`(관계 이동), `chevrons-down-up`(범례 접기), `settings`, `hourglass`, `x`
 AWS 스냅샷(추가): `archive`(메뉴), `tag`(라벨·메모), `trash-2`(삭제·휴지통), `undo-2`(복원), `pencil`(편집), `save`(저장), `terminal`(CLI 안내), `folder`(폴더 위치), `file-x`(파일 없음), `file-question`(예상 밖 파일, lucide 버전에 따라 `file-question-mark`), `file-pen`(원본 편집 안내), `sticky-note`(메모 있음), `wrap-text`(줄 바꿈), `lock`(보기 전용·쓰기 불가). 기존 재사용: `file-warning`(raw 데이터), `hourglass`(내보내기 진행 중), `hand`(커밋·적용 안 함), `info`, `circle-help`
 
+컨트롤 플레인(추가, 2026-09-24 `kops-support`): `server-cog`(컨트롤 플레인 카드·칩·마스터 EC2 비용 종류 — lucide 버전에 없으면 `cpu`). 기존 재사용: `server`(노드·워커 기준 칩), `database`(etcd 볼륨), `hard-drive`(마스터 루트 볼륨), `network`(API 서버 LB), `globe`(마스터 퍼블릭 IPv4), `minus`(필수 판정 제외·구성요소 없음), `check`(단일 구성 확인됨), `tilde`(API 서버 LB로 추정), `arrow-up`(컨트롤 플레인 보기 링크), `circle-help`·`info`·`octagon-x`·`triangle-alert`·`circle-check`·`clock-alert`
+- `server-cog`를 고른 이유: 노드 아이콘(`server`)과 몸체를 공유해 "노드의 일종인데 클러스터를 제어하는 것"으로 읽히고, 개요에서 두 카드가 나란히 놓여도 제목으로 갈린다. `settings`(시스템 네임스페이스 칩)와 글리프가 겹치지 않는다.
+
+알림·로그·설정(추가, 2026-09-25 `alerts`·`logs`): `inbox`(사이드바 `알림`), `send`(발송됨·테스트 발송), `repeat`(반복 N회), `activity`(불안정·플래핑), `arrow-down-to-line`(새 줄 N개·맨 아래로). 기존 재사용: `scroll-text`(사이드바 `로그`·파드 상세 `로그 보기` 버튼·매트릭스 칸 로그 버튼), `settings`(사이드바 `설정`), `database`(로그 스택 출처), `eye-off`(가림 N·가림 건수), `lock`(환경 변수로 잠김), `trash-2`(웹훅 지우기), `ban`(발송 제외·`제외(발생 안 보냄)`), `minus`(미설정·발송 꺼짐), `pause`(`발송 멈춤(연속 실패)`, 2026-09-25 — 알림 화면에서는 이 뜻 하나), `hourglass`(발송 대기·재시도), `rotate-ccw`(재시작으로 생략·이전 세대), `octagon-x`(발송 실패), `flask-conical`(실제로 보내지 않음), `layers`(영향 영역 N개), `timer`(보관 N일), `circle-help`(정지 구간·확인 불가), `play`/`pause`(따라가기), `history`(로그 `그 시각` 칩·앵커 구분 줄, 2026-09-25 — 로그 화면에서는 이 뜻 하나), `wrap-text`(줄 바꿈), `search`, `refresh-cw`, `external-link`, `chevron-down`/`chevron-up`, `info`, `triangle-alert`, `x`
+
+- **`알림`에 `bell`·`bell-dot`을 쓰지 않는 이유**: 사이드바 `이벤트` 항목이 이미 `bell-ring`이다. 20px에서 종 두 개가 한 목록에 있으면 라벨을 읽기 전에는 갈리지 않는다. 알림 센터는 읽음·안 읽음과 `모두 확인`이 있는 **이력함**이라 `inbox`가 뜻에도 더 가깝다. (`이벤트`의 아이콘은 바꾸지 않았다 — 다른 기능의 확정된 화면을 이번 작업으로 건드리지 않는다.)
+- **`로그`의 `scroll-text`는 3D 종류 아이콘(Role·ClusterRole)과 글리프가 겹친다.** 허용하는 이유: 3D 쪽은 캔버스·관계 표 안에서 **언제나 종류 이름과 나란히** 읽히고(11.6), 사이드바 쪽은 `로그` 라벨과 함께 있다. 둘이 한 화면에 보여도 위치와 라벨로 갈린다. 대안(`file-text`)은 k8s 스냅샷의 리소스 파일과 같은 문제가 있고, `terminal`은 이 대시보드에서 "실행"을 연상시켜 조회 전용 원칙과 어긋난다.
+
 크기: 12 / 14 / 16 / 20 / 24 / 40px(`size.icon`), 선 굵기 2px(12·14px는 2.25px).
 
 ---
@@ -748,7 +756,7 @@ type DiffValueData =                                                 // API Diff
 | status | `DriftStatus` props | 줄 ① 배지 lg |
 | reason | string[] | |
 | computedAt | IsoTime | `15:12:04 계산` |
-| target | `{ name: string; context?: string \| null }` | API `target`. `비교 대상 prod-eks (sentinel-prod)` |
+| target | `{ name: string; context?: string \| null }` | API `target`. `비교 대상 prod.k8s.example.com (sentinel-prod)`. 이름은 `ResourceName kind="cluster"`(19.3) |
 | mode | `"auto" \| "on_demand" \| "last_result"` | API `drift.mode` 그대로. 줄 ① 둘째 줄 문구(`k8s-snapshot.md` 6.3) |
 | refreshing | boolean | API `computing`. Spinner 12px + `갱신 중 · ` |
 | onRecompute | () => void? | `on_demand`: `다시 계산` secondary sm / `last_result`: primary sm |
@@ -1005,7 +1013,7 @@ export function kindShape(kind: string | null, opts?: { custom?: boolean; layer?
 - props 변경 없음. 층 색 사각(12px, `viz.kind.*.fill` + 1px `edge`)은 Chip이 아니라 호출 측이 그리는 단순 `<span>`이다.
 
 ### 17.4 `SegmentedControl` (2026-09-20 publisher 구현 반영)
-- 옵션에 `icon?: IconName`, `tooltip?: string`, `disabledReason?: string` 추가. `disabledReason`이 있으면 그 칸은 `aria-disabled`(포커스는 받는다) + 사유 툴팁 — 3D를 쓸 수 없는 브라우저의 `3D` 칸(`snapshot-3d.md` 9.3)이 이 경우다.
+- 옵션에 `icon?: IconName`, `tooltip?: string`, `disabledReason?: string` 추가. `disabledReason`이 있으면 그 칸은 `aria-disabled`(포커스는 받는다) + 사유 툴팁 — 3D를 쓸 수 없는 브라우저의 `3D` 칸(`snapshot-3d.md` 9.3)이 이 경우다. **사유만 보여 주고 칸은 누를 수 있어야 하면 `tooltip`**(21.3 주의).
 - `orientation?: "horizontal" | "vertical"`(기본 `horizontal`). `vertical`은 카메라 오버레이의 시점 3칸(폭 88px, 16.3)에 쓴다. 세로일 때 칸 높이 28px, 구분선은 칸 사이 가로 1px `border.subtle`.
 
 ### 17.5 `Switch` (2026-09-20 publisher 구현 반영)
@@ -1017,3 +1025,324 @@ export function kindShape(kind: string | null, opts?: { custom?: boolean; layer?
 
 ### 17.7 `Popover` (2026-09-20 추가)
 - 범례(16.5)가 도구 막대 B 버튼에 붙는 팝오버가 되면서 필요한 것: `align?: "start" | "end"`(기본 `start`. 범례는 `end` = 오른쪽 정렬), `maxHeight?: number | string`(넘치면 안쪽 스크롤). 나머지 동작(`Esc`·바깥 클릭 닫힘, 닫으면 여는 버튼으로 포커스 복귀)은 기존 그대로.
+
+---
+
+## 18. 컨트롤 플레인 전용 (`kops-support`, 2026-09-24)
+
+화면 배치·치수는 `docs/design/cluster-status.md` 3.2, 상태 규칙은 `status.md` 1절·2.5. **새 토큰 없음**(기존 `status.*`·`bg.*`·`border.*`만 쓴다). 이 기능에서 새로 만드는 컴포넌트는 **아래 하나뿐**이고, 나머지(상태 배지·카드·사용률 막대·표·칩·InlineAlert)는 전부 기존 것을 그대로 쓴다.
+
+```ts
+type CellState =
+  | "ok" | "warn" | "crit"      // 파드 상태 판단 (서버 값)
+  | "unknown"                    // 그 밖의 알 수 없음
+  | "notReporting"               // 마스터가 NotReady라 미러 파드 상태를 믿을 수 없음
+  | "missing"                    // 그 마스터에 이 필수 구성요소가 없음
+  | "stale";                     // 화면이 새 값을 못 받는 중 (status.md 2.5)
+```
+
+### 18.1 `ComponentMatrix`
+
+| prop | 타입 | 설명 |
+|---|---|---|
+| columns | `{ id: string; name: string; meta?: string; status: Status; notReporting?: boolean; reason?: string; href?: string }[]` | 마스터. 순서는 **마스터 표와 같은 순서로 호출 측이 넘긴다**(화면이 다시 정렬하지 않는다). `meta`는 `ap-northeast-2a · t3.medium`. **`reason`(2026-09-24 보탬)**은 마스터 노드 상태의 서버 사유 한 줄(`NotReady 4분`) — 열 머리 툴팁에 쓴다. 없으면 상태 문구만으로 툴팁을 만든다 |
+| rows | `{ id: string; label: string }[]` | 필수 구성요소 5종. 순서는 서버 값(고정) |
+| cells | `{ columnId: string; rowId: string; state: CellState; label: string; detail?: string; href?: string; tooltip?: string }[]` | 칸마다 1개. **없는 칸을 화면이 만들지 않는다** — 구성요소가 없으면 서버가 `missing`으로 준다 |
+| summary | `{ state: Status; count: number }[]` | 매트릭스 위 한 줄 요약(`필수 15칸 · 정상 13 · …`). 0인 항목도 넘기고 화면이 `text.disabled`로 죽인다. **0이 아닌 항목은 언제나 `<button>`**이고, 누르면 그 상태 셀만 2000ms 외곽선(`status.<key>.solid` 2px)으로 강조된다 — **강조는 컴포넌트 안에서 완결되는 기본 동작**이라 호출 측이 아무것도 넘기지 않아도 동작한다. **0인 항목은 버튼이 아니다**(강조할 칸이 없어 "눌러도 아무 일 없는 버튼"이 되고 Tab 순서만 늘어난다) |
+| onSummaryClick | (state) => void? | **선택.** 있으면 위 강조에 **더해** 호출된다. 바깥에서 따로 할 일(필터 바꾸기·기록 남기기 등)이 있을 때만 넘긴다. 강조를 켜는 스위치가 **아니다** |
+| staleAt | IsoTime? | 있으면 전 셀을 stale 모습으로(원래 상태는 툴팁 `마지막 상태: …`) |
+| state | `"ready" \| "loading" \| "unknown"` | loading: 머리 40px + 5 × 48px 스켈레톤. unknown: 표 대신 `UnknownState`(sm) |
+| unknownReason | string? | `컨트롤 플레인 노드를 찾을 수 없습니다` 등 서버 사유 |
+| caption | string | 스크린리더용 표 제목(`컨트롤 플레인 구성요소 상태`) |
+
+치수·색: `cluster-status.md` 3.2.3 표 그대로(왼쪽 머리 열 220px sticky, 셀 폭 `clamp(140, (가용 폭 − 220) ÷ N, 240)px`, 셀 높이 48px, 셀 간격 4px, 전체 높이 296px 고정).
+
+- **필수 prop은 `columns`·`rows`·`cells`·`caption` 넷뿐**이다. 나머지를 빠뜨려도 화면이 **조용히 기능을 잃지 않는다**(요약 강조는 기본 동작, `reason`·`tooltip`이 없으면 있는 값으로 문구를 만든다). 기능을 켜는 스위치 prop(`highlightOnSummaryClick` 같은)을 만들지 않는다 — "켜야 동작한다"는 함정을 이름만 바꿔 남기게 된다.
+- **마크업은 진짜 `<table>`**: `<th scope="col">`(마스터) / `<th scope="row">`(구성요소). 셀 `aria-label`은 `<구성요소>, <마스터>, <상태 문구>, <보조 문구>`. 셀에 링크가 있으면 셀 안쪽 `<a>`가 셀 전체를 덮고 hit 영역 최소 32px.
+- 상태는 **색 + 아이콘 모양 + 문구** 셋을 항상 함께 그린다. `notReporting`만 배경에 45° 빗금(1px `status.unknown.border`, 간격 6px)을 더해 `stale`(빗금 없음 + dashed 테두리)과 흑백에서도 갈린다(`status.md` 2.5).
+- crit 셀이 있으면 그 **행 머리와 열 머리**에 `octagon-x` 12px을 붙인다(가로 스크롤 중에도 어느 축인지 보이게).
+- **열 머리 툴팁 문구 조립 규칙** (2026-09-24 보탬, publisher 요청 ①):
+  `노드 <상태 문구>[ (<columns[].reason>)] · 구성요소 <그 열 최악 상태 문구>[ <같은 상태 칸 수>]`
+  - 예: `노드 주의 (NotReady 4분) · 구성요소 알 수 없음 5` / `노드 정상 · 구성요소 장애 1`.
+  - `reason`이 없으면 괄호를 통째로 뺀다. 칸 수는 **그 열의 셀 배열을 세어** 만든다(서버가 준 상태를 세는 것이라 새 판단이 아니다. `worst()`와 같은 부류).
+  - 열 머리 아이콘은 이 툴팁이 말하는 두 값 중 **나쁜 쪽 하나**뿐이다(축마다 하나, `cluster-status.md` 3.2.3).
+- **최소 셀 폭(140px)에서 잘리는 문자열과 그때의 규칙** (2026-09-24, publisher 폰트 메트릭 실측):
+
+  | 문자열 | 글자 | 실측 | 최소 셀 내용 폭(140 − 좌우 패딩 20 − 아이콘·간격 ≈ 114~120px) |
+  |---|---|---|---|
+  | 열 머리 `meta` `ap-northeast-2a · t3.medium` | micro 11 | 143.6px | **넘침 → 1줄 말줄임** |
+  | 셀 2행 `detail` `CrashLoopBackOff · 재시작 4회` | micro 11 | 155.2px | **넘침 → 1줄 말줄임** |
+  | 셀 2행 `마지막 보고 04:58` | micro 11 | 89.4px | 들어감 |
+  | 열 머리 이름 `i-0a1b2c3d4e5f6a7b8` | mono 12 | 125.4px | 들어감(240px 상한에서는 여유) |
+
+  - `meta`와 `detail`은 **끝 말줄임(1줄)**이고, 잘리면 **툴팁이 전체를 준다**. 서버가 `tooltip`을 주면 그 값을, 없으면 `<1행 문구> · <2행 보조>`를 자동으로 만든다. 툴팁 없이 자르는 것은 금지다 — 잘린 사유는 "장애 원인"이라 닿을 길이 없으면 화면이 거짓말을 한다.
+  - 줄을 3행으로 늘리지 않는다(셀 48px 고정). 문구를 늘려야 하면 **서버 `detail`을 짧은 쪽부터**(사유 코드 먼저, 부가 설명 뒤) 채운다.
+- 열이 1개여도 같은 컴포넌트를 쓴다(노드 상세의 마스터 카드, `cluster-status.md` 4절). 열 수에 따라 분기하지 않는다.
+- 값 계산(Ready 수, 쿼럼, 재시작 판정)은 **전부 서버 값**이다. 이 컴포넌트는 그리기만 한다. 화면이 하는 것은 서버가 준 상태 중 나쁜 쪽 고르기(`worst()`)와 같은 상태 칸 세기뿐이다.
+
+---
+
+## 19. 기존 컴포넌트 확장 (`kops-support`에서 필요)
+
+### 19.1 `StatusCard`
+- `primarySub?: ReactNode` 추가 — primary(metricMd) 바로 아래 caption 12/16 `text.secondary` 한 줄. 컨트롤 플레인 카드의 `필수 구성요소 15/15`(AC-KOPS18)를 위한 것.
+- **왜 기존 `counts`로 안 되는가**: `counts`는 `{ status, count }[]`라 `장애 1 · 정상 13`처럼 **상태별 개수**만 만들 수 있고 `15/15`(분모가 있는 비율)를 표현할 수 없다. 반대로 `primary`에 두 줄을 욱여넣으면 metricMd 28px 줄이 두 번 쌓여 카드 176px을 넘는다.
+- `counts`와 `primarySub`는 **동시에 쓰지 않는다**(같은 자리). 둘 다 오면 `primarySub`를 그리고 콘솔 경고.
+
+### 19.2 `SummaryStripItem`
+- `sub?: ReactNode` 추가 — value 아래 caption 12/16 한 줄(`컨트롤 플레인 3/3`, AC-KOPS10). `href`와 별개로 `subHref?: string`을 주면 부제만 다른 곳으로 이동한다(부제는 `#control-plane`, 값은 `/cluster/nodes`).
+- 칸 높이는 그대로 88px: 라벨 16 + 값 28 + 부제 16 = 60px ≤ 내용 높이 64px. 부제가 있는 칸은 최소 폭 120px → **150px**.
+
+### 19.3 `ResourceName`
+- `kind: "cluster"` 추가 — 글자 body 14/20(**sans**, mono 아님), `copyable` 기본 false.
+- **말줄임 규칙**(2026-09-24 구현 확정): **뒤 8자를 고정으로 보존하고, 앞부분은 폭이 허락하는 만큼 남긴 뒤 그 끝에서 말줄임**한다. 잘림은 언제나 이름 **가운데**에서 일어난다. 상자가 넉넉하면(앞 12자 + 뒤 8자가 들어가는 폭) `prod-ap-northeast…mple.com`처럼 앞 12자 이상이 그대로 남고, 더 좁아지면 앞부분만 계속 줄어 `prod-…mple.com`이 된다.
+  - 앞부분을 **고정 12자 토막으로 두지 않는다**: `flex-shrink: 0`인 앞 토막을 따로 두면 ① 폭이 모자랄 때 말줄임이 두 번 생기거나(`prod-ap-n… heast… mple.com`) ② flexbox 계수 규칙 때문에 **뒤 8자가 통째로 잘린다.** 둘 다 실제 브라우저에서 확인된 결함이다(`publisher.md` 2026-09-24 (3) P16). 한 토막의 끝 말줄임이면 **보이는 결과는 같으면서** 두 결함이 없다.
+  - 상자 320 / 200 / 120 / 80px에서 넘침 0px로 확인됐다.
+- **왜 기본 규칙(끝 16자 보존)을 쓰지 않는가**: `status.md` 5.3의 끝 보존은 파드 이름의 ReplicaSet 해시를 남기기 위한 것이다. 클러스터 FQDN은 반대로 **맨 앞 라벨**이 클러스터를 구분하고 뒤는 공통 도메인이라, 끝만 남기면 `…k8s.example.com`만 보여 아무것도 구분하지 못한다.
+- prop은 **`keepTail?: number` 하나만** 둔다(kind별 기본값: 일반 16 / `cluster` 8). `keepHead`는 두지 않는다 — 앞은 고정 글자 수가 아니라 **남는 폭**으로 정해지므로 숫자로 지정할 대상이 없다(동작 없는 prop이 된다).
+- 전체 이름은 툴팁과 `sr-only`에 항상 있다. `tooltipExtra`로 툴팁 아래 줄(`Kubernetes v1.31.2 · ap-northeast-2`)을 덧붙인다.
+
+### 19.4 `Chip`
+- props 변경 없음. 새 라벨 4개(`컨트롤 플레인` `server-cog` / `단일 구성 확인됨` `check` / `필수 판정 제외` `minus` / `워커 기준` `server`)와 비용 하위 종류 5개는 모두 **neutral tone**이다(`status.md` 1.3). 상태가 아니므로 색을 쓰지 않는다.
+
+### 19.5 `SegmentedControl`
+- props 변경 없음. 노드 화면의 역할 필터(`워커 6 | 컨트롤 플레인 3 | 전체 9`)가 새로 쓴다. 각 칸의 개수는 서버 `facets.roles` 값.
+
+---
+
+## 20. 알림·로그·설정 전용 (`alerts`, `logs`, 2026-09-25)
+
+화면 배치·문구는 `docs/design/alerts.md`, `docs/design/logs.md`, `docs/design/settings.md`. 표시 규칙은 `status.md` 12절·13절.
+**새 토큰 없음.** 새로 만드는 컴포넌트는 **아래 5개뿐**이고 나머지(상태 배지·칩·카드·버튼·입력·Dialog·Drawer·Popover·InlineAlert·EmptyState·UnknownState·FilterBar·Select·Switch·SegmentedControl·KeyValueList·CodeBlock·`ComponentMatrix`)는 전부 기존 것을 그대로 쓴다.
+
+| 새 컴포넌트 | 기능 | 왜 기존 것으로 안 되는가 |
+|---|---|---|
+| 20.1 `AlertItem` | alerts | 한 항목이 2~4줄 + 칩 5종이라 표 셀로 만들 수 없다(`status.md` 12.3) |
+| 20.2 `AlertGapRow` | alerts | 아래 근거 참고 |
+| 20.3 `SecretInput` | settings | `TextField`는 "저장 후 원문을 안 보여준다"는 상태(가림 힌트·잠금·바꾸기/지우기)를 표현할 수 없다 |
+| 20.4 `CollapsibleNotice` | logs | `InlineAlert`·`Banner`에는 접기가 없고, `Section collapsible`은 h2 제목이 붙는 페이지 구조물이다. **접었을 때 한 줄 요약이 남아야** 한다(명세 3.2) |
+| 20.5 `LogLineList` | logs | 가상 스크롤 + 인라인 가림 + sticky gutter. `CodeBlock`(8.7)은 문자열 하나를 통째로 그리는 상자라 2만 줄에서 멈춘다 |
+
+- **`NotificationBell`을 정의하지 않는다** (2026-09-25 PM 정정). 상단바 벨을 만들지 않기로 했으므로(`shell.md` 2절, AC-ALERT36) 그 컴포넌트는 존재 이유가 없다. 안 읽은 개수 배지는 **기존 `NavItem.count`를 재사용**한다(21.1).
+- 이름은 명세(`alerts` 7절 퍼블리싱)의 `SecretInput`을 그대로 쓴다. `TextField`와 짝을 맞춘 `SecretField`도 후보였지만, **문서와 코드가 다른 이름을 쓰는 비용**이 이름 통일성보다 크다.
+
+```ts
+type AlertSeverity = "critical" | "warning" | "unknown" | "resolved";   // API 값 그대로
+type AlertKind = "transition" | "escalation" | "resolve" | "flapping" | "restart_summary" | "test";
+type DispatchState =
+  | "sent" | "pending" | "failed"
+  | "skipped_not_configured" | "skipped_disabled" | "skipped_severity"
+  | "skipped_unknown_off" | "skipped_flapping" | "skipped_mock" | "skipped_restart"
+  | "skipped_no_pair" | "skipped_circuit_open";     // 2026-09-25 추가 (계약 1.4 · DB enum과 같은 12종)
+type LogSource = "direct" | "stack";
+type LogLineKind = "line" | "dropped" | "binary" | "redactFailed" | "ringTop" | "gap";
+```
+
+**발송 칩 `DISPATCH_SPEC` (2026-09-25 통합 1차 후속)** — `DispatchState` 12종이 모두 키가 된다. 문구·아이콘·tone의 **정본은 `status.md` 12.5 표**다. 아래 표는 이번에 더한 두 줄을 퍼블리셔가 옮기기 쉽게 적은 **변경분 기록**이고, 값은 12.5와 같다. 나중에 값을 바꿀 때는 12.5만 고친다. 이 기록은 그대로 둔다(전체 표를 두 벌 두면 한쪽만 고쳐진다).
+
+| state (추가분) | tone | icon | label |
+|---|---|---|---|
+| `skipped_no_pair` | `neutral` | `ban` | `제외(발생 안 보냄)` |
+| `skipped_circuit_open` | `neutral` | `pause` | `발송 멈춤(연속 실패)` |
+
+- 두 줄 모두 `neutral`이다. `skipped_*`는 오류가 아니다(AC-ALERT19). 기존 테스트의 "`failed`·`skipped_mock` 말고는 전부 neutral" 검사가 그대로 통과해야 한다.
+- 아이콘 `pause`는 레지스트리에 이미 있다(13절 공통). **새 아이콘·새 토큰은 없다.**
+- union 밖의 값이 오면 칩을 그리지 않고, 확장 영역 발송 기록에 서버 `label`을 보여 준다(frontend `state in DISPATCH_SPEC` 검사를 유지한다). 비슷한 키로 바꿔 그리지 않는다. 틀린 문구가 되어 "왜 안 갔나"를 찾을 수 없게 된다. 계약에 새 값이 생기면 `status.md` 12.5에 먼저 더한다.
+
+### 20.1 `AlertItem` (알림 목록 항목)
+
+| prop | 타입 | 기본 | 설명 |
+|---|---|---|---|
+| severity | AlertSeverity | - | 배지(`status.md` 12.1). `kind: "test"`면 배지 없이 `테스트 발송` 칩 |
+| kind | AlertKind | `transition` | 확장 영역의 내용을 고른다 |
+| areaLabel | string | - | `컨트롤 플레인` / `파드` / `비용` / `쿠버네티스 연결` (서버 문구) |
+| reason | string | - | 서버 `reasons[0].text` 그대로. 1줄 말줄임 + 툴팁 |
+| targets | `{ kind: string; namespace?: string; name: string; href?: string }[]` | `[]` | 최대 3개. `ResourceName`(copyable=false) |
+| targetsMore | number | 0 | `외 N개` |
+| occurredAt / resolvedAt | IsoTime / IsoTime? | - | 오른쪽 위 시각(`status.md` 6절), 해제면 `· 지속 17분` |
+| durationMs | number? | - | 해제·진행 중 지속 시간(**서버 값**. 화면이 시계로 계산하지 않는다) |
+| repeatCount | number | 1 | 2 이상이면 `반복 N회` 칩(`repeat`) |
+| flapping | boolean | false | `불안정` 칩(`activity`) |
+| suppressedAreas | number | 0 | 1 이상이면 `영향 영역 N개` 칩(`layers`) |
+| dataSource | `"mock" \| "live"` | `live` | `mock`이면 `실제로 보내지 않음` 칩(tone `mock`) |
+| dispatch | `{ state: DispatchState; at?: IsoTime; detail?: string }[]` | `[]` | 채널별 칩(`status.md` 12.5, 12종). `ui` 채널은 그리지 않는다(항상 성공). 칩 문구는 말줄임하지 않는다(가장 긴 칩 약 130px) |
+| read | boolean | - | false면 왼쪽 gutter에 8px 원 `accent.default` + 접근 이름 앞 `안 읽음,` |
+| href | string? | - | **항목 전체가 링크**(해당 화면으로). 없으면 `<div>` |
+| logHref | string? | - | 3행 오른쪽 `로그` 링크(대상이 파드일 때만 서버가 준다). **로그 본문은 넣지 않는다**(`alerts.md` 4.4) |
+| expandable | boolean | false | 오른쪽 끝 `chevron-down` IconButton sm |
+| expanded / onToggleExpand | boolean / () => void | - | |
+| children | ReactNode? | - | 확장 영역 내용(타임라인·영향 영역 목록·발송 기록·보낼 본문) |
+
+치수: 최소 높이 76px(3행이면 96px), 패딩 12px 16px 12px 12px, 왼쪽 읽음 gutter 20px, 아래 1px `border.subtle`. hover `bg.hover`, 확장 중 `bg.selected`. `severity: critical`이면 항목 왼쪽 가장자리 3px `status.crit.solid` 막대(`status.md` 5.1 규칙 재사용), warn 이하는 막대 없음.
+확장 영역: 배경 `bg.surfaceSunken`, 패딩 12px 16px, 위 1px `border.subtle`.
+state: unread / read / hover / focus(`shadow.focus`) / expanded / crit(막대).
+접근성: `<li>` 안에 `<a>`(href) + 별도 `<button>`(확장). 접근 이름 = `[안 읽음,] <심각도 문구>, <영역>, <사유>, <시각>`.
+좁은 폭(640px 미만): 1행 = 배지 + 영역, 2행 = 시각 + 칩, 3행 = 사유, 4행 = 대상. 최소 높이 112px.
+
+### 20.2 `AlertGapRow` (정지 구간 줄)
+
+| prop | 타입 | 설명 |
+|---|---|---|
+| from / to | IsoTime / IsoTime | 구간. `to`가 없으면 `지금`까지 |
+| minutes | number | 서버 값(`19`) |
+| unknownPrevious | boolean | true면 `이전 실행 기록 없음 — 이전에 무엇이 있었는지 알 수 없습니다`(대시보드 DB 없음) |
+
+모양·문구는 `status.md` 12.4 그대로(높이 32px, `status.unknown.bg` + 45° 빗금, `circle-help` 14px). `<li aria-label="정지 구간 09시 12분부터 09시 31분까지 19분, 이 동안의 변화는 알림으로 잡히지 않았습니다">`.
+- **필터·정렬과 무관하게 그려진다.** 이 컴포넌트를 필터 결과 배열에서 빼는 코드를 만들지 않는다(호출 측 규칙).
+- **왜 `AlertItem`의 한 종류로 넣지 않는가**: 정지 구간은 알림이 아니다. 심각도·읽음·발송·링크가 하나도 없고, 필터를 타지 않으며, 확인 처리 대상도 아니다. `AlertItem`에 `kind: "gap"`을 넣으면 그 컴포넌트의 거의 모든 prop이 "gap일 때는 무시"가 되어 다음 사람이 읽을 수 없는 컴포넌트가 된다.
+- **왜 `InlineAlert`로 안 되는가**: `InlineAlert`에는 45° 빗금 채움이 없다. 빗금은 "관측하지 않은 구간"을 회색조·흑백에서도 구분하는 유일한 단서다(`status.md` 2.5). 또 목록 항목(`<li>`)으로 시각 순서 안에 끼어야 하는데 `InlineAlert`는 카드·섹션 안 안내다.
+
+### 20.3 `SecretInput` (비밀값 입력·표시)
+
+웹훅 주소처럼 **저장 후 원문을 다시 보여주지 않는** 값 전용. 다른 비밀 설정이 생기면 그대로 쓴다.
+
+| prop | 타입 | 기본 | 설명 |
+|---|---|---|---|
+| label | string | - | `웹훅 주소` |
+| configured | boolean | - | 저장돼 있는가 |
+| hint | string? | - | 서버가 준 가림 힌트 `…****7f3a` (mono). **화면이 만들지 않는다** |
+| length | number? | - | `(119자)` |
+| updatedAt | IsoTime? | - | `9월 25일 14:02 저장` |
+| lockedByEnv | string? | - | 잠금 사유에 쓸 환경 변수 이름(`ALERTS_DISCORD_WEBHOOK_URL`). 있으면 입력·버튼 전부 비활성 + `lock` 칩 |
+| mode | `"idle" \| "editing" \| "saving"` | `idle` | `configured && idle`이면 입력칸을 그리지 않는다 |
+| value / onChange | string / (v) => void | - | **editing일 때만.** 저장 성공 즉시 호출 측이 비운다 |
+| placeholder | string? | - | `https://discord.com/api/webhooks/…` |
+| error | string? | - | 서버 사유 한 줄. **입력값 원문을 되비추지 않는다** |
+| onSave / onClear / onEdit | () => void | - | 저장 / 지우기(확인 Dialog는 호출 측) / 바꾸기 |
+| description | ReactNode? | - | 필드 아래 설명 |
+
+모양: `TextField`(11.4) + 버튼을 감싼 블록. `configured && idle`: 값 자리에 `MaskedValue variant="box"`(`…****7f3a`) + caption `119자 · 9월 25일 14:02 저장` + `바꾸기`(secondary sm) + `지우기`(ghost sm, 글자 `danger.default`).
+입력 요소: `type="password"`가 아니라 **`type="text"` + `autocomplete="off"` + `spellcheck=false`**(붙여넣기 확인이 목적이고, 비밀번호 관리자에 잡히면 안 된다). 저장 성공 시 값과 DOM 입력을 **즉시 비운다.**
+state: empty / editing / saving(버튼 loading, 입력 `locked`) / configured / lockedByEnv / error.
+- **"다시 보기" 버튼을 두지 않는다.** 눈 아이콘 토글을 붙이면 안 된다 — 서버가 원문을 주지 않으므로 보여 줄 값이 애초에 없다(`alerts` 명세 3.4.3).
+
+### 20.4 `CollapsibleNotice` (접을 수 있는 안내 블록)
+
+여러 줄 안내 중 **접어도 한 줄 요약이 남아야 하는 것** 전용. 로그의 한계 4줄이 첫 사용처다.
+
+| prop | 타입 | 기본 | 설명 |
+|---|---|---|---|
+| tone | `"neutral" \| "info" \| "warn"` | `neutral` | `Banner`(6.1)와 같은 색 규칙 |
+| icon | IconName? | - | 16px, 한 번만 |
+| summary | string | - | **접었을 때 남는 한 줄**(`직접 조회 · 지난 로그·검색 없음`) |
+| lines | ReactNode[] | - | 펼쳤을 때 줄 목록(`<ul>`, 줄 간 4px) |
+| defaultOpen | boolean | `true` | |
+| open / onToggle | boolean / () => void | - | 제어형으로 쓸 때 |
+| persistKey | 없음 | - | **저장하지 않는다.** 다음에 열면 다시 펼쳐진다(`status.md` 13.6) |
+
+모양: radius 6px, 패딩 8px 12px, 왼쪽 3px `<tone>.solid`(neutral은 `border.strong`), 줄 caption 12/16 `text.secondary`, 오른쪽 위 `chevron-down`/`chevron-up` IconButton sm.
+- **닫기(`x`)가 없다.** 접기만 있다. 접힘 상태에서도 `summary`와 아이콘은 남는다.
+
+### 20.5 `LogLineList` (로그 본문, 가상 스크롤)
+
+| prop | 타입 | 기본 | 설명 |
+|---|---|---|---|
+| lines | `LogLine[]` | - | 아래 구조. **호출 측이 링버퍼(2만 줄)를 관리한다** |
+| showTimestamp | boolean | true | 시각 열(104px, 좁은 폭 72px) |
+| wrap | boolean | false | 줄 바꿈. false면 본문 영역 안에서만 가로 스크롤 |
+| showPrefix | boolean | false | 파드·컨테이너 접두 열(200px, `stack` 합쳐보기) |
+| follow | boolean | false | **자동 스크롤**: true면 새 줄에 맞춰 맨 아래로 붙는다. prop 이름은 `follow`지만 `따라가기` Switch(연결)와 **다른 값**이다. 호출 측은 `따라가기 켬 && 자동 스크롤 켬`을 넘긴다(`logs.md` 7.4) |
+| onFollowBreak | () => void | - | 사용자가 위로 스크롤하면(끝에서 20px 넘게 벗어나면) 1회 호출. 호출 측은 **자동 스크롤만** 끈다. `따라가기` Switch와 연결은 그대로 둔다(2026-09-25 PM 결정 D2) |
+| onReachBottom | () => void | - | **(2026-09-25 추가)** 자동 스크롤이 꺼진 상태에서 사용자가 스크롤해 끝에서 4px 이내에 닿으면 호출. 호출 측은 `pendingCount`를 0으로 되돌리고 **자동 스크롤은 켜지 않는다**(`logs.md` 7.4). 내용이 늘어나는 것만으로는 부르지 않는다(사용자 스크롤일 때만) |
+| pendingCount | number | 0 | 1 이상이면 하단 가운데 떠 있는 `새 줄 N개` 버튼. N = 자동 스크롤이 멈춘 뒤 들어와 **아직 화면 아래에 있는** 줄 수 |
+| onJumpToBottom | () => void | - | 그 버튼. 맨 아래로 즉시 이동 + 호출 측이 자동 스크롤을 다시 켠다 |
+| findQuery | string? | - | 화면 안에서 찾기: 일치 부분 배경 `status.warn.bg`(**글자색은 바꾸지 않는다**), 현재 일치는 1px `accent.default` 테두리 |
+| anchor | `{ lineId: string; placement: "above" \| "below"; label: string; title?: string }?` | - | **(2026-09-25 추가)** 그 시각으로 열기(`logs.md` 7.6). `lineId` 줄의 배경을 `bg.selected`로 칠한다. 그 줄 위(`above`) 또는 아래(`below`)에 **구분 줄** 1개를 그린다: 20px, 배경 `bg.surfaceSunken`, 가운데 `history` 12px + `label` micro 11/14 600 `text.primary`, `user-select: none`. `title`은 전체 시각 툴팁이다. 구분 줄은 `lines`에 넣지 않는 화면 요소다(줄 수·찾기 대상 아님). **처음 받을 때 한 번** 스크롤한다: `above`면 구분 줄 윗변을 본문 높이 1/3(20px 단위 내림)에, 첫 줄이면 0에, `below`면 맨 아래에 둔다. 즉시 이동이다. `lineId`가 바뀌면 다시 한 번 옮긴다. `follow`와 함께 쓰지 않는다(호출 측이 따라가기를 켜면 `anchor`를 뗀다) |
+| onRedactionClick | (line, anchor: HTMLElement) => void | - | 가림 gutter 버튼. Popover는 호출 측이 연다 |
+| height | number \| "auto" | - | px. 파드 상세 `로그` 섹션 안 임베드는 480px(`logs.md` 9절) |
+| state | `"ready" \| "loading" \| "empty"` | `ready` | loading: 20px 줄 스켈레톤 12개 |
+| caption | string | - | 스크린리더용 영역 이름(`prod / api-7f9c… 컨테이너 api 로그`) |
+
+```ts
+type RedactionRule = { id: string; label: string };   // 계약 그대로 (docs/api/logs.md)
+                                                      // id = conn_string, label = 접속 문자열 자격 증명
+
+type LogLine = {
+  id: string;                       // 서버 값(재연결해도 중복되지 않는다)
+  kind: LogLineKind;
+  at?: IsoTime;                     // 서버가 분리해 준 시각
+  prefix?: { pod: string; container: string };
+  segments: (
+    | { t: "text"; v: string }
+    | { t: "masked"; v: string; rules: RedactionRule[]; confidence: "high" | "suspect" }
+  )[];
+  truncatedBytes?: number;          // 끝에 `… (N바이트 생략)`
+  droppedLines?: number;            // kind: "dropped"
+  bytes?: number;                   // kind: "binary"
+};
+```
+
+- **`rules`는 `{ id, label }`이다** (2026-09-25 정정. 이전 판의 `string[]`은 **틀렸다** — 계약 `docs/api/logs.md`가 맞다). 팝오버에 **`label`(한국어 이름)을 그린다.** `id`는 문구를 만들지 않고 테스트·버그 보고용으로만 쓴다(`sr-only`에도 넣지 않는다 — `conn_string`을 낭독해 봐야 도움이 되지 않는다).
+- **화면에 규칙 목록·개수를 하드코딩하지 않는다.** 규칙은 늘어난다(2026-09-25 `sql_statement` 추가로 11종). 서버가 준 `rules`를 순서 그대로 나열할 뿐이다(`logs.md` 7.3).
+- **텍스트로만 렌더한다.** `dangerouslySetInnerHTML` 금지, ANSI·제어문자는 **서버가 이미 제거해서** 온다(명세 3.6). 화면은 다시 파싱하지 않는다.
+- 줄 높이 20px 고정(가상 스크롤). `wrap`이면 측정 기반 가변 높이(20px × 줄 수).
+- 가림 gutter(28px)는 `position: sticky; left: 0`이라 가로 스크롤해도 남는다(`status.md` 13.4).
+- 접근성: 영역은 `role="log" aria-live="off"`. **새 줄을 낭독하지 않는다**(초당 수천 줄). 대신 `새 줄 N개` 버튼과 하단 상태 줄만 `aria-live="polite"`.
+- 브라우저 저장소에 아무것도 쓰지 않는다(명세 3.3.4). 컴포넌트 안에 `localStorage` 호출이 없어야 한다.
+
+---
+
+## 21. 기존 컴포넌트 확장 (`alerts`·`logs`에서 필요, 2026-09-25)
+
+### 21.1 `SideNav` `NavItem`
+- **`status` 없이 `count`만** 줄 수 있다(종전에는 `count` 색을 `status`에서 가져왔다). `알림` 항목은 상태 점이 없다.
+- `countTone?: Status` — 배지 색(기본 `crit`). 알림은 **미확인 중 최악 심각도**를 넘긴다(`crit`/`warn`/`unknown`).
+- `countLabel?: string` — 스크린리더·접힘 툴팁 문구(`안 읽음 3건`). 없으면 종전 규칙(`, 커밋 금지 2개`).
+- **접힘(64px)에서도 `count`를 그린다** — 단 `status`가 없는 항목만. 치수는 `shell.md` 3.2(14px pill, 1.5px `bg.surface` 테두리). 상태 점이 있는 항목(스냅샷)은 종전대로 접힘에서 배지를 그리지 않는다.
+- 목록은 3단 flex가 된다(스크롤 영역 / 구분선 / 하단 고정). `footerItems?: NavItem[]` — 하단 고정 영역에 둘 항목(`설정`). 없으면 종전과 같다.
+
+### 21.2 `Chip`
+- `tone`에 **`"mock"`** 추가 — 배경 `mode.mockBg`, 글자·아이콘 `mode.mockFg`, 테두리 없음. 상단바 MOCK 배지와 같은 색이라 "이건 mock이다"가 한 눈에 통일된다. **새 토큰이 아니다.**
+- `onClick?: () => void` — 있으면 `<button>`으로 렌더(hover `bg.hover`, focus `shadow.focus`, 최소 hit 영역 32px). 로그의 `가림 N` 칩(Popover 트리거)과 알림 요약 줄의 심각도 칩이 쓴다. 없으면 종전대로 `<span>`.
+- `title?: string` — 툴팁. `onClick`이 없는 칩도 설명이 필요할 때가 있다(`보관 7일`).
+
+### 21.3 `SegmentedControl`
+- `options[].disabled?: boolean` + `options[].disabledReason?: string` — 회색(글자 `text.disabled`, 배경 없음) + `aria-disabled="true"` + **포커스는 받는다**(툴팁을 키보드로도 읽을 수 있어야 한다). 로그 출처 선택의 `로그 스택`(설정 없음)이 쓴다.
+- 비활성 항목을 **목록에서 빼지 않는다.** 빼면 "그런 선택지가 원래 없다"로 읽혀 사용자가 로그 스택의 존재 자체를 모르게 된다.
+- **주의 (2026-09-25 통합 1차): `disabledReason`만 줘도 그 칸은 비활성이 된다**(`disabled || disabledReason`, 17.4 정의 그대로). **누를 수 있어야 하는 칸에 사유만 보여 주려면 `tooltip`을 쓴다.** 로그 컨테이너 칩에 `CrashLoopBackOff`를 `disabledReason`으로 넘겼다가, 정작 조사해야 할 컨테이너를 고를 수 없는 결함이 실제로 났다(`logs.md` 5절). `disabledReason`은 "이 칸은 고를 수 없다, 이유는 이것"일 때만 쓴다.
+
+### 21.4 `MaskedValue`
+- `variant?: "box" | "inline"`(기본 `box` — 종전 모양 그대로).
+- `inline`: 로그 줄 안에 섞이는 조각용. 아이콘 없음, 높이 없음(`display: inline`), 배경 `bg.surfaceSunken`, 1px dashed `border.default`, radius 3px, 패딩 0 2px, 글자는 주변 본문과 같은 크기(`code` 13/20). 한 줄에 여러 개가 와도 줄 높이가 20px를 넘지 않는다.
+- 두 variant 모두 **복사 버튼이 없다**(종전 규칙 유지).
+
+### 21.5 `ComponentMatrix` (`kops-support` 18.1)
+- `cells[].logHref?: string` 추가 — 있으면 셀 hover·focus 때 **오른쪽 아래 모서리에 겹쳐** `IconButton sm`(`scroll-text`, 24 × 24px, 배경 `bg.surface`, shadow xs, 셀 안쪽 4px)을 그린다.
+- **셀 치수·문구 폭을 바꾸지 않는다.** 버튼 자리를 상시 비워 두면 최소 셀 폭 140px에서 내용 폭이 114px → 90px로 줄어 2행 사유가 더 심하게 잘린다. 겹쳐 그리면 잘린 문구는 이미 툴팁에 전부 있으므로(18.1) 잃는 정보가 없다.
+- `state: "missing"` 셀에는 버튼을 그리지 않는다(볼 파드가 없다). `notReporting`에는 **그린다** — 마스터가 NotReady여도 로그 조회는 성공할 수 있어 막지 않는다(`logs` 명세 3.7).
+- 키보드: 셀 링크 다음 Tab 순서. `aria-label`은 `<구성요소> <마스터> 로그 보기`.
+
+### 21.6 `EmptyState`
+- `footer?: ReactNode` 추가 — 설명 아래 12px, caption `text.tertiary`, 최대 폭 400px. 알림 빈 상태의 "지금도 지켜보고 있다" 한 줄(`alerts.md` 6.1)에 쓴다.
+- **왜 `description`으로 안 되는가**: `description`은 한 문단이고 가운데 정렬 본문이다. 빈 알림 화면에서 필요한 것은 그 아래에 **다른 무게**로 놓이는 사실 한 줄(마지막 확인 시각)이라, 같은 문단에 이어 붙이면 "알림이 없습니다 … 대시보드는 …"이 한 덩이로 읽혀 둘 다 흐려진다.
+
+### 21.7 `Dialog`
+- props 변경 없음. 테스트 발송 확인은 `tone="danger"` + `initialFocus="cancel"`(12.6에서 이미 추가됨) + `confirmDisabled`로 만든다. **`TypeToConfirmDialog`(11.5)를 쓰지 않는다** — 입력 확인은 되돌릴 수 없고 대상이 특정되는 파괴적 행위(스냅샷 삭제)용이고, 테스트 발송은 문구를 읽고 누르는 한 번의 확인이면 충분하다. 확인 절차를 무겁게 만들수록 사람은 문구를 안 읽고 통과하는 법을 익힌다.
+
+### 21.8 `Tabs` / `LinkTabs`
+- props 변경 없음. `/settings`는 **탭이 1개뿐이라 이번에는 탭 줄을 그리지 않는다**(`settings.md` 2절). 나중에 `비용` 탭이 생기면 `LinkTabs`(14.1)를 PageHeader 아래에 끼운다.
+
+### 21.9 `InlineAlert` preset `RedactionNotice` (2026-09-25 퍼블리셔 추가, PM 승인)
+
+- 로그 가림 경고(`logs.md` 6.1)를 `InlineAlert` **preset**으로 박제한 것이다. tone `neutral` · 아이콘 `eye-off` · 문구 고정이고, **`closable`·`onClose`를 받지 않는다.**
+- **새 카탈로그 컴포넌트가 아니다.** 20절의 "새 컴포넌트 5개"는 그대로다.
+- 왜 preset인가: "닫을 수 없어야 한다"를 문서 규칙으로만 두면 언젠가 누군가 `closable`을 준다. **prop 자체를 없애면** 그 실수가 타입에서 막힌다(웹훅 원문을 응답 타입에서 없앤 것과 같은 방식).
+- 같은 성질의 문구가 또 생기면(예: 컨트롤 플레인 자기참조 안내) 같은 방식으로 preset을 만든다. 단 **`tone`·문구를 preset 밖에서 바꿀 수 있게 열지 않는다** — 열면 preset이 아니라 그냥 `InlineAlert`가 된다.
+
+### 21.10 `ResourceName` `logHref` (2026-09-25 추가 — 파드 표의 `로그`, `logs.md` 0절)
+
+| prop | 타입 | 기본 | 설명 |
+|---|---|---|---|
+| logHref | `string \| null` | - | 있으면 복사 버튼 **다음**(간격 4px)에 로그 아이콘 링크를 그린다. `null`·없음이면 그리지 않고 **자리도 비우지 않는다** |
+
+- 모양: `<a href>`, 24 × 24px, radius 6px, 아이콘 `scroll-text` 14px `text.secondary`. hover 배경 `bg.hover`·아이콘 `text.primary`, focus `shadow.focus`. 툴팁 `로그 보기`(400ms). 클릭 영역은 32 × 32px다(24px 상자 + 바깥 4px 투명 hit 영역).
+- 접근 이름: `<표시 이름> 로그 보기`(예: `api-7f9c8d6b5-x2kq9 로그 보기`).
+- **보이는 조건은 복사 버튼과 같다**(한 규칙으로 묶는다):
+  - 평소: `opacity: 0`이고 **자리는 항상 차지한다**(나타날 때 이름 말줄임이 흔들리지 않게).
+  - 보임: `.rn:hover`, `.rn:focus-within`, 행 `tr:hover`, **행 `tr:focus-within`·`tr:focus-visible`**(키보드로 행에 왔을 때 무엇을 할 수 있는지 보이게. 복사 버튼에도 같이 적용한다).
+  - `@media (hover: none)`(터치): **항상 `opacity: 1`.**
+  - 투명도로만 숨기므로 스크린리더에는 항상 있다. `visibility: hidden`·`display: none`으로 숨기지 않는다.
+- 클릭은 행 클릭(`onRowClick` → 파드 상세)으로 번지지 않는다(`stopPropagation`, 복사 버튼과 같다).
+- 링크 주소는 **서버 `logHref` 그대로**다. 컴포넌트는 파라미터를 붙이지 않는다.
+- 쓰는 곳: 파드 목록·워크로드 상세 소속 파드·노드 상세 파드·DB 파드 표의 이름 칸이다. Warning 이벤트 표는 쓰지 않는다(글자 링크 `로그`, `logs.md` 0절).
+- 이름 칸 폭: 복사 24 + 간격 4 + 로그 24 + 간격 4 = 버튼 몫 56px이다. 이름 열 최소 240px(`status.md` 5.3)에서 이름 글자 폭은 약 168px(mono 12 약 23자)다. 끝 16자 보존 + `…`가 들어간다.

@@ -232,8 +232,10 @@ describe("사이드바 스냅샷 메뉴·탭 (계약 12절, AC-K16)", () => {
     expect(snapshotTabItems(excluded.tabs)[0].status).toBeUndefined();
   });
 
-  it("기본 구독 토픽은 overview + snapshot-menu (사이드바), aws/k8s 토픽은 화면이 구독", () => {
-    expect(BASE_TOPICS).toEqual(["overview", "snapshot-menu"]);
+  // alerts(2026-09-25): 사이드바 `알림` 배지·탭 제목이 모든 화면에 있으므로 `alerts`가 기본 토픽에 더해졌다
+  // (alerts.md 6절). 이 토픽에는 **이력 목록이 실리지 않는다**(6.1) — aws/k8s 처럼 화면이 REST 로 읽는다.
+  it("기본 구독 토픽은 overview + snapshot-menu + alerts (사이드바), aws/k8s 토픽은 화면이 구독", () => {
+    expect(BASE_TOPICS).toEqual(["overview", "snapshot-menu", "alerts"]);
   });
 });
 

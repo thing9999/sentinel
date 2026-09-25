@@ -306,6 +306,71 @@ describe('extract*(): 원본 JSON 과 타입 객체의 결과가 같다 (informe
   }
 });
 
+describe('extractNode: kOps 노드그룹 라벨과 role (AC-KOPS03·07)', () => {
+  const nodeWith = (labels: Record<string, string>) => ({
+    metadata: { name: 'n', creationTimestamp: T, labels },
+    spec: {},
+    status: {
+      allocatable: { cpu: '1930m', memory: '7Gi', pods: '29' },
+      capacity: { cpu: '2', memory: '8Gi', pods: '29' },
+      conditions: [cond('Ready')],
+      nodeInfo: { kubeletVersion: 'v1.34.1' },
+    },
+  });
+
+  it('kops.k8s.io/instancegroup → nodeGroup', () => {
+    const n = extractNode(
+      nodeWith({
+        'kops.k8s.io/instancegroup': 'nodes-ap-northeast-2a',
+      }) as never,
+    );
+    expect(n.nodeGroup).toBe('nodes-ap-northeast-2a');
+    expect(n.role).toBe('worker');
+  });
+
+  it('EKS·Karpenter 라벨만 있으면 nodeGroup은 null (하위 호환 없음)', () => {
+    const n = extractNode(
+      nodeWith({
+        'eks.amazonaws.com/nodegroup': 'ng-1',
+        'karpenter.sh/nodepool': 'np-1',
+        'alpha.eksctl.io/nodegroup-name': 'ng-2',
+      }) as never,
+    );
+    expect(n.nodeGroup).toBeNull();
+  });
+
+  it('node-role.kubernetes.io/control-plane → control_plane', () => {
+    const n = extractNode(
+      nodeWith({
+        'kops.k8s.io/instancegroup': 'control-plane-ap-northeast-2a',
+        'node-role.kubernetes.io/control-plane': '',
+      }) as never,
+    );
+    expect(n.role).toBe('control_plane');
+    expect(n.nodeGroup).toBe('control-plane-ap-northeast-2a');
+  });
+
+  it('구 라벨 node-role.kubernetes.io/master도 control_plane', () => {
+    expect(
+      extractNode(nodeWith({ 'node-role.kubernetes.io/master': '' }) as never)
+        .role,
+    ).toBe('control_plane');
+  });
+
+  it('구매 옵션은 쿠버네티스 표준 라벨만 본다 (EKS·Karpenter 키 무시)', () => {
+    expect(
+      extractNode(
+        nodeWith({ 'eks.amazonaws.com/capacityType': 'SPOT' }) as never,
+      ).capacityType,
+    ).toBeNull();
+    expect(
+      extractNode(
+        nodeWith({ 'node.kubernetes.io/instance-lifecycle': 'spot' }) as never,
+      ).capacityType,
+    ).toBe('spot');
+  });
+});
+
 describe('makeRawLister: GET 원본 JSON', () => {
   let server: Server;
   let port = 0;

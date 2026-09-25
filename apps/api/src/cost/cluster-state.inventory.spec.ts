@@ -21,6 +21,7 @@ function inv(
       capacityType: 'on_demand',
       zone: 'ap-northeast-2a',
       nodeGroup: 'g',
+      role: 'worker' as const,
       architecture: 'amd64',
       allocatable: { cpuMillicores: 1930, memoryBytes: 1 },
     })),

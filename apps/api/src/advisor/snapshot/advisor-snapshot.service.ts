@@ -44,7 +44,19 @@ export function normalizeSection(
   }
   if (section === 'cost') {
     if ('cost' in v) return v;
-    return 'currency' in v || 'rate' in v ? { cost: v } : null;
+    // 비용 기여자는 cost 블록을 평평하게 돌려준다. 스냅샷 최상위로 올려야 하는
+    // 목록(controlPlaneVolumes 등)은 여기서 함께 꺼낸다
+    return 'currency' in v || 'rate' in v
+      ? {
+          cost: v,
+          ...(Array.isArray(v.controlPlaneVolumes)
+            ? { controlPlaneVolumes: v.controlPlaneVolumes }
+            : {}),
+          ...(Array.isArray(v.unattachedVolumes)
+            ? { unattachedVolumes: v.unattachedVolumes }
+            : {}),
+        }
+      : null;
   }
   return v;
 }

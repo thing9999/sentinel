@@ -1,0 +1,148 @@
+/*
+ * 설정 화면 배치 (docs/design/settings.md 2·8절). 색·글자는 토큰 변수만 쓰고, 모양은 components/ui 가 맡는다.
+ * 새 토큰 없음.
+ */
+
+/* 폼 영역: 최대 720px, 왼쪽 정렬. 1160px 을 다 쓰면 라벨과 값이 멀어져 짝이 안 읽힌다(디자인 2절) */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  max-width: 720px;
+  min-width: 0;
+}
+
+.cardHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-3);
+  min-width: 0;
+}
+
+.cardTitle {
+  margin: 0;
+  font: var(--font-h3);
+  color: var(--color-text-primary);
+}
+
+.saved {
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  min-width: 0;
+}
+
+/* 구분선은 성격이 바뀌는 자리에만 (웹훅 ↔ 심각도 ↔ 테스트) */
+.divider {
+  margin: 0;
+  border: 0;
+  border-top: var(--border-width-thin) solid var(--color-border-subtle);
+}
+
+/* 스위치 바로 아래 설명: 스위치 폭 32 + 간격 12 = 44px 들여쓰기 (디자인 2절) */
+.switchDesc {
+  margin: var(--spacing-1) 0 0 44px;
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+.fieldLabel {
+  font: var(--font-caption-strong);
+  color: var(--color-text-secondary);
+}
+
+/* 넓은 폭: 세그먼트는 내용 폭만 (stack 안에서 늘어나지 않게) */
+.segAuto {
+  align-self: flex-start;
+}
+
+.fullWidth {
+  display: flex;
+  width: 100%;
+}
+
+.fullWidth > label,
+.fullWidth > span {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+/* `i-0abc…`는 채널에 찍히는 모양 그대로 mono (디자인 3.5) */
+.resourceName {
+  font: var(--font-resource-name);
+}
+
+.testRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+
+.testMeta,
+.testMetaFailed {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.testMetaFailed {
+  color: var(--color-text-primary);
+}
+
+/* `마지막 발송 없음` — caption text.tertiary (디자인 3.6) */
+.testMetaNone {
+  display: inline-flex;
+  align-items: center;
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+.modeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+/* 대화상자 경고 줄: bodyStrong + danger.default + octagon-alert (디자인 4.3) */
+.dangerLine {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+  margin: 0;
+  font: var(--font-body-strong);
+  color: var(--color-danger-default);
+}
+
+.dangerLine > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* 좁은 화면: 테스트 발송 버튼은 전체 폭, `마지막 발송` 줄은 버튼 아래 (디자인 8절) */
+@media (max-width: 1023px) {
+  .form {
+    max-width: none;
+  }
+
+  .testRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

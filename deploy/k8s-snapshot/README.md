@@ -59,12 +59,16 @@ npm install --prefix deploy/k8s-snapshot
 cp deploy/k8s-snapshot/.env.example deploy/k8s-snapshot/.env   # KUBE_CONTEXT 를 채운다
 ```
 
-- Node 22 이상. `@kubernetes/client-node`(인증: EKS `aws eks get-token` exec 플러그인 포함)와 `yaml`만 쓴다. `kubectl`은 필요 없다.
+- Node 22 이상. `@kubernetes/client-node`와 `yaml`만 쓴다. `kubectl`은 필요 없다(kubeconfig에 exec 플러그인이 있으면 그대로 따른다).
 - 스캐너는 `deploy/aws-snapshot/lib/scan.mjs`를 상대 경로로 불러온다(내장 모듈만 쓰므로 aws-snapshot 쪽 `npm install`은 필요 없다).
 
 ## 3. 내보내기 전용 읽기 역할·컨텍스트
 
 대시보드 권한과 **분리된** 사람용 역할·컨텍스트를 쓴다. 대시보드 ServiceAccount 토큰이나 `sentinel-readonly` 역할을 쓰지 않는다(권한 목록이 다르고, 대시보드 권한을 넓힐 이유를 만들지 않기 위해).
+
+> ⚠️ **아래 절차(2·3번)는 kOps 문서와 `docs/specs/kops-support.md` 3.6을 근거로 쓴 것이고, 실제 kOps 클러스터에서 실행해 확인하지 않았다.**
+> 특히 API 서버 주소(`https://api.<클러스터 이름>`)는 **추정**이다 — `--dns=none`·내부 LB 구성에서는 다르다.
+> 4번 확인(`kubectl auth can-i`)까지 마쳐야 권한이 실제로 읽기 전용인지 알 수 있다.
 
 1. 역할 적용 (클러스터 관리자가, 한 번):
    ```bash
@@ -72,18 +76,15 @@ cp deploy/k8s-snapshot/.env.example deploy/k8s-snapshot/.env   # KUBE_CONTEXT �
    ```
    - ClusterRole `sentinel-snapshot-export`: 기본·선택 종류의 `get`, `list`만. `watch`·쓰기 동사·`secrets`·`pods/exec`·`pods/log` 없음.
    - ClusterRoleBinding 대상은 그룹 `sentinel-snapshot-exporters`(예시).
-2. IAM 주체를 그룹에 연결 (EKS access entry):
-   ```bash
-   aws eks create-access-entry --cluster-name <클러스터> \
-     --principal-arn arn:aws:iam::<계정>:role/<내보내기용-역할> \
-     --kubernetes-groups sentinel-snapshot-exporters
-   ```
-   access entry 를 쓰지 않는 클러스터는 `aws-auth` ConfigMap 의 `mapRoles`에 같은 그룹을 적는다.
-3. 컨텍스트 만들기 (내보내기용 AWS 프로필로):
-   ```bash
-   aws eks update-kubeconfig --name <클러스터> --profile <내보내기용-프로필> --alias sentinel-snapshot
-   ```
+2. 사람(또는 전용 ServiceAccount)을 그룹 `sentinel-snapshot-exporters`에 연결한다.
+   kOps 클러스터에는 EKS access entry·`aws-auth` ConfigMap 같은 AWS 연동 인증이 **없다.** 방법은 둘 중 하나다.
+   - **전용 ServiceAccount**(간단하고 권장): 내보내기 전용 SA를 만들고 위 ClusterRoleBinding의 `subjects`를 그 SA로 바꾼다. 토큰은 사람이 `kubectl -n <ns> create token <sa>`로 꺼낸다.
+   - **사용자 인증서**: 클러스터 CA로 `O=sentinel-snapshot-exporters` 클라이언트 인증서를 발급한다(조직 = 그룹).
+3. 내보내기 전용 컨텍스트를 만든다.
+   서버 주소(kOps는 보통 `https://api.<클러스터 이름>` — **확인 필요**)·클러스터 CA·위에서 받은 토큰(또는 인증서)으로 kubeconfig 항목을 만들고 컨텍스트 이름을 `sentinel-snapshot`으로 둔다.
+   현재 접속 중인 kubeconfig에서 값을 꺼내면 확실하다: `kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}'`
    `.env`의 `KUBE_CONTEXT=sentinel-snapshot`. **current-context를 몰래 쓰지 않는다**: 비우면 종료코드 2.
+   > **`kops export kubeconfig --admin`으로 만든 컨텍스트를 쓰지 말 것.** cluster-admin 인증서가 들어 있어 "읽기 전용"이 권한으로 막히지 않는다(4번 확인이 통과해 버린다).
 4. 확인: `kubectl auth can-i list secrets --context sentinel-snapshot -A` → `no` 여야 한다.
 
 ## 4. 사용법·설정·종료코드
@@ -181,7 +182,7 @@ env:
    ```
    - **Helm 관리 리소스**(레이블 `app.kubernetes.io/managed-by: Helm`, 대시보드 "Helm 관리")는 `kubectl apply` 대신 Helm으로 복원한다.
    - **PVC**: 스냅샷의 PVC를 적용하면 **빈 볼륨**이 새로 만들어진다. 데이터가 필요하면 8장 순서를 먼저 따른다.
-   - 시스템 네임스페이스(`kube-system` 등)는 EKS 애드온이 관리하는 리소스가 많아 복원 대상이 아니다.
+   - 시스템 네임스페이스(`kube-system` 등)는 kOps 애드온·컨트롤 플레인 static pod 미러가 관리하는 리소스가 많아 복원 대상이 아니다.
 5. 대시보드 드리프트 화면에서 "차이 없음"이 되는지 확인한다.
 
 ## 8. Postgres·PV 데이터 (이 스냅샷에 없음)
@@ -238,16 +239,17 @@ env:
 - ConfigMap `kube-root-ca.crt`
 - `default` 네임스페이스의 Service `kubernetes`
 - ServiceAccount `default` (어노테이션·`imagePullSecrets`·`automountServiceAccountToken`이 없을 때. 있으면 사용자가 고친 것으로 보고 내보낸다)
-- 이름이 `system:`·`eks:`로 시작하는 Role/RoleBinding/ClusterRole/ClusterRoleBinding, 레이블 `kubernetes.io/bootstrapping=rbac-defaults`
+- 이름이 `system:`으로 시작하는 Role/RoleBinding/ClusterRole/ClusterRoleBinding, 레이블 `kubernetes.io/bootstrapping=rbac-defaults`
+  - (`eks:` 접두어 규칙도 `lib/rules.mjs`에 남아 있다. **kOps에서는 매칭되지 않는 EKS 잔재**이고 다음 정리 때 지운다 — `docs/specs/k8s-snapshot.md` 3.4)
 - 이름이 `system-`으로 시작하는 PriorityClass
 
 **Helm**: 레이블 `app.kubernetes.io/managed-by: Helm`인 리소스는 기본으로 내보내고 수를 기록한다(`SNAPSHOT_INCLUDE_HELM=false`면 뺀다). Helm 릴리스 Secret(`sh.helm.release.v1.*`)은 Secret이라 읽지 않는다.
 
-위 목록은 초기안이다. EKS 버전을 올리면서 새 자동 생성 객체가 보이면 `lib/rules.mjs`와 이 표를 함께 고친다.
+위 목록은 초기안이다. 쿠버네티스·kOps 버전을 올리면서 새 자동 생성 객체가 보이면 `lib/rules.mjs`와 이 표를 함께 고친다.
 
 ## 11. 문제 해결
 - **종료코드 2 "컨텍스트가 없습니다"**: `.env`의 `KUBE_CONTEXT`를 채운다. `kubectl config get-contexts`에 있는 이름이어야 한다.
-- **종료코드 3 (401·연결 실패)**: `aws sso login --profile …`, `aws eks update-kubeconfig …`로 자격증명을 갱신한다. 요청당 30초 제한이 있다.
+- **종료코드 3 (401·연결 실패)**: 토큰이 만료됐을 수 있다. 3장 2번으로 토큰을 다시 발급해 kubeconfig를 갱신한다(exec 플러그인을 쓰는 구성이면 그쪽 자격증명을 갱신한다). 요청당 30초 제한이 있다.
 - **종료코드 3 "kube-system 을 읽을 수 없음"**: 역할에 `namespaces` get/list가 있는지, access entry 그룹이 맞는지 확인한다(`kubectl auth can-i get namespaces --context …`).
 - **종료코드 4**: `metadata.json`의 `kinds.<종류>.result`가 `forbidden`이면 역할에 그 종류를 더하거나 `SNAPSHOT_EXCLUDE_KINDS`로 뺀다. `not_found`면 클러스터에 그 API가 없다.
 - **스캔 경고 `k8s-last-applied`**: 정리 규칙을 거치지 않은 파일(손으로 붙여 넣은 YAML)이다. 어노테이션을 지운다.

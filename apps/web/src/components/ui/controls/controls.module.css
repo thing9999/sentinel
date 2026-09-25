@@ -861,3 +861,89 @@
   font-variant-numeric: var(--font-numeric);
   color: var(--color-text-tertiary);
 }
+
+/* ───── SecretInput (components.md 20.3, settings.md 3.2) ───── */
+/*
+ * 저장 후 원문을 다시 보여주지 않는 값. "다시 보기" 토글이 없다 — 보여 줄 값이 애초에 없다.
+ * 저장돼 있는지 아닌지는 보인다(가림 힌트 + 글자 수 + 저장 시각).
+ */
+.secret {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.secretRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.secretField {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.secretActions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex-shrink: 0;
+}
+
+/* 지우기: ghost 인데 글자만 danger (settings.md 3.2) */
+.secretClear {
+  color: var(--color-danger-default);
+}
+
+.secretValue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.secretLabel {
+  font: var(--font-caption-strong);
+  color: var(--color-text-secondary);
+}
+
+.secretValueRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.secretEmpty {
+  font: var(--font-body);
+  color: var(--color-text-tertiary);
+}
+
+.secretMeta {
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+  font-variant-numeric: var(--font-numeric);
+}
+
+.secretNote {
+  margin: 0;
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+/* 좁은 폭: 입력과 버튼이 세로로 쌓인다(360px 가로 스크롤 금지) */
+@media (max-width: 639px) {
+  .secretRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .secretActions {
+    justify-content: flex-start;
+  }
+}

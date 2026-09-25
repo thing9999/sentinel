@@ -1,0 +1,130 @@
+/*
+ * 로그 화면 배치 (docs/design/logs.md 2·6·7.5절). 색은 토큰 변수만.
+ * 로그 본문·가림 gutter 의 모양은 퍼블리셔의 `LogLineList` 안에 있다 — 여기서 덮어쓰지 않는다
+ * (sticky gutter 가 이 기능에서 가장 깨지기 쉬운 부분이다: logs/publisher.md 8-1).
+ */
+
+/* `/logs` 페이지: 줄 사이 8px (디자인 2절 표의 "아래 여백") */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.sourceRow,
+.targetRow,
+.controlRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.limitHint {
+  color: var(--color-text-tertiary);
+}
+
+.findBox {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.findNav {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.findCount {
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.findHint {
+  margin: 0;
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+/* 하단 상태 줄 (24px) */
+/* 파드 MultiSelect 를 감싼 자리(`파드 고르기`가 포커스를 옮길 곳). 배치에는 끼지 않는다 */
+.podPicker {
+  display: contents;
+}
+
+/* 기간 Select 를 감싼 자리(앵커 안내의 `기간 고르기`가 포커스를 옮길 곳). 배치에는 끼지 않는다 */
+.rangeBox {
+  display: contents;
+}
+
+/* 본문 상자: 남은 높이 측정·찾은 줄로 스크롤하는 기준 (모양 없음) */
+.bodyBox {
+  min-width: 0;
+}
+
+.statusLine {
+  margin: 0;
+  min-height: 24px;
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 가림 규칙 팝오버 — sticky gutter 요소에 붙인다(가로 스크롤해도 어긋나지 않게) */
+.redactPopover {
+  position: fixed;
+  z-index: 60;
+  padding: var(--spacing-3);
+  border: var(--border-width-thin) solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated, var(--color-bg-surface));
+  box-shadow: var(--shadow-md);
+  max-height: min(400px, calc(100vh - 32px));
+  overflow: auto;
+}
+
+.redactList {
+  list-style: none;
+  margin: 0 0 var(--spacing-2);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.redactRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  font: var(--font-caption);
+  color: var(--color-text-primary);
+}
+
+.redactNote {
+  margin: 0;
+  padding-top: var(--spacing-2);
+  border-top: var(--border-width-thin) solid var(--color-border-subtle);
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+/* `/logs` 대상 선택 줄 (네임스페이스·워크로드·파드) */
+.pickerRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+@media (max-width: 1023px) {
+  .pickerRow > * {
+    width: 100%;
+  }
+}

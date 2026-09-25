@@ -11,6 +11,7 @@ import {
   Button,
   Card,
   ChartFrame,
+  Chip,
   CostKindBadge,
   Drawer,
   ErrorState,
@@ -34,6 +35,7 @@ import {
   SeverityIcon,
   shortNodeName,
   Skeleton,
+  STATUS_LABEL,
   StatusBadge,
   StatusCard,
   StatusIcon,
@@ -51,10 +53,20 @@ import { badgeProps, periodicStale, reasonTexts, STALE_AFTER_MS, type StaleMark 
 import { AREA_LABEL, apiStatus, hrefForRef } from "./selectors";
 import { thresholdLines } from "./chart-helpers";
 import styles from "./OverviewPage.module.css";
+import { CONTROL_PLANE_ANCHOR } from "./ControlPlaneSection";
 import { useClusterView } from "./shared";
-import type { AreaProblem, AttentionItem, AttentionListResponse, ClusterMetricsBody, MetricsSeriesResponse, OverviewResponse, SeriesPoint } from "./types";
+import type { AreaProblem, Areas, AttentionItem, AttentionListResponse, ClusterMetricsBody, MetricsSeriesResponse, OverviewResponse, SeriesPoint } from "./types";
 
 const TOPICS = ["overview", "metrics"] as const;
+
+/** 디자인 2.5. 클러스터 합계에서 마스터가 빠진다는 것을 문구로 남긴다 (AC-KOPS12) */
+const WORKER_BASIS_HELP =
+  "컨트롤 플레인 노드는 합계에서 빠집니다. 마스터 사용률은 노드 화면의 컨트롤 플레인 섹션에 있습니다.";
+/** kOps는 metrics-server가 기본 설치가 아니다. **실행 명령은 넣지 않는다**(조회 전용, AC-KOPS39) */
+const METRICS_OFF_HINT =
+  "클러스터에 metrics-server가 설치돼 있지 않습니다. kOps 클러스터 설정의 spec.metricsServer.enabled를 켜면 표시됩니다.";
+const METRICS_OFF_IMPACT =
+  "사용률 판단·추이 그래프·마스터 사용률·어드바이저 일부 규칙이 '알 수 없음'이 됩니다. 노드·파드·워크로드·이벤트·DB·비용은 영향받지 않습니다.";
 
 function problemItems(problems: AreaProblem[]): StatusCardItem[] {
   return problems.slice(0, 3).map((p) => ({
@@ -64,6 +76,45 @@ function problemItems(problems: AreaProblem[]): StatusCardItem[] {
     detail: p.reason,
     mono: true,
   }));
+}
+
+/** 노드 화면 위쪽 컨트롤 플레인 섹션 (백엔드 P3로 생겼다). `scroll-margin-top`은 섹션 쪽에서 붙인다 */
+const CONTROL_PLANE_HREF = `/cluster/nodes#${CONTROL_PLANE_ANCHOR}`;
+
+/** 상단바·요약 띠 공통 규칙(shell.md 2.1): 이름은 ResourceName kind="cluster", 나머지는 툴팁에 남긴다 */
+function ClusterMeta({ cluster }: { cluster: OverviewResponse["cluster"] }) {
+  if (!cluster.connected || !cluster.name) return <>클러스터 연결 없음</>;
+  const rest = [cluster.version, cluster.region].filter(Boolean).join(" · ");
+  return (
+    // nowrap 으로 묶지 않는다: `ResourceName kind="cluster"` 는 앞 12자·뒤 8자가 줄어들지 않아
+    // 남는 폭이 그보다 좁으면 상자 밖으로 삐져나와 옆 글자와 겹친다(360px에서 확인). 좁으면 줄을 바꾼다.
+    <span className="row" style={{ minWidth: 0, overflow: "hidden" }}>
+      <ResourceName
+        name={cluster.name}
+        kind="cluster"
+        maxWidth={288}
+        tooltipExtra={`Kubernetes ${cluster.version ?? "버전 알 수 없음"}${cluster.region ? ` · ${cluster.region}` : ""}`}
+      />
+      {rest ? <span aria-hidden="true">· {rest}</span> : null}
+    </span>
+  );
+}
+
+/**
+ * 요약 띠 노드 칸의 부제 (디자인 2.2). 마스터 수를 워커 수에 더하지 않고 여기에만 적는다.
+ * 상태·개수는 전부 서버 값(`areas.controlPlane`)이다.
+ */
+function ControlPlaneSub({ cp }: { cp: NonNullable<Areas["controlPlane"]> }) {
+  if (!cp.found) {
+    return <span className="text-caption-tertiary">컨트롤 플레인 —</span>;
+  }
+  const s = apiStatus(cp.status.status);
+  return (
+    <span className="row" style={{ flexWrap: "nowrap" }}>
+      {s === "ok" ? null : <StatusIcon status={s} size={12} title={STATUS_LABEL[s]} />}
+      컨트롤 플레인 {formatCount(cp.masters.ready)}/{formatCount(cp.masters.total)}
+    </span>
+  );
 }
 
 function counts(c: { critical: number; warning: number; ok: number }) {
@@ -89,8 +140,8 @@ export function OverviewPage() {
         <PageHeader title="개요" />
         <div className="page-stack">
           <SummaryStrip overall={{ status: "unknown", reason: [] }} state="loading" />
-          <Grid columns={5} columnsMd={3}>
-            {Array.from({ length: 5 }, (_, i) => (
+          <Grid columns={3} columnsMd={3}>
+            {Array.from({ length: 6 }, (_, i) => (
               <StatusCard key={i} title="…" icon="server" status="unknown" primary="" state="loading" />
             ))}
           </Grid>
@@ -118,9 +169,8 @@ export function OverviewPage() {
     return { status: b.status === "stale" ? (b.previousStatus ?? "unknown") : b.status, staleAt: b.status === "stale" ? b.staleAt : undefined };
   };
 
-  const clusterMeta = ov.cluster.connected
-    ? [ov.cluster.name, ov.cluster.version, ov.cluster.region].filter(Boolean).join(" · ")
-    : "클러스터 연결 없음";
+  const clusterMeta = <ClusterMeta cluster={ov.cluster} />;
+  const cp = a.controlPlane;
 
   const dbHeadline = a.db.headline ? `${a.db.headline.label} ${headlineValue(a.db.headline.value, a.db.headline.unit)}` : "—";
 
@@ -134,11 +184,14 @@ export function OverviewPage() {
           updatedAt={ov.overall.updatedAt}
           updatedStale={watch.stale}
         >
+          {/* 워커 기준 값이다(서버가 마스터를 빼고 준다, AC-KOPS10). 화면에서 마스터를 더하지 않는다 */}
           <SummaryStripItem
-            label="노드 Ready"
+            label="노드 Ready (워커)"
             value={`${formatCount(a.nodes.ready)}/${formatCount(a.nodes.total)}`}
             status={apiStatus(a.nodes.status.status) === "ok" ? undefined : apiStatus(a.nodes.status.status)}
             href="/cluster/nodes"
+            sub={cp ? <ControlPlaneSub cp={cp} /> : undefined}
+            subHref={cp ? CONTROL_PLANE_HREF : undefined}
           />
           <SummaryStripItem label="파드" value={<CountTriple c={a.pods.counts} />} href="/cluster/pods" />
           <SummaryStripItem label="워크로드" value={<CountTriple c={a.workloads.counts} />} href="/cluster/workloads" />
@@ -146,7 +199,25 @@ export function OverviewPage() {
           <SummaryStripItem label="DB" value={<StatusBadge {...badgeProps(a.db.status, dbStale)} size="md" />} href="/cluster/db" />
         </SummaryStrip>
 
-        <Grid columns={5} columnsMd={3}>
+        {/* 카드 6개 · 3 × 2 (디자인 2.3). 순서 고정: 컨트롤 플레인 → 노드 → 워크로드 → 파드 → 이벤트 → DB */}
+        <Grid columns={3} columnsMd={3}>
+          {cp ? (
+            <StatusCard
+              title="컨트롤 플레인"
+              icon="server-cog"
+              {...cardProps(nodesMark, cp.status)}
+              primary={cp.found ? `마스터 ${formatCount(cp.masters.ready)}/${formatCount(cp.masters.total)}` : "—"}
+              primarySub={
+                cp.found
+                  ? `필수 구성요소 ${formatCount(cp.components.ready)}/${formatCount(cp.components.total)}`
+                  : "컨트롤 플레인 노드를 찾을 수 없습니다"
+              }
+              items={problemItems(cp.problems)}
+              reason={reasonTexts(cp.status)}
+              href={CONTROL_PLANE_HREF}
+              footerLabel="컨트롤 플레인 보기"
+            />
+          ) : null}
           <StatusCard
             title="노드"
             icon="server"
@@ -378,7 +449,13 @@ function ClusterUsageCard({ kind }: { kind: UsageKind }) {
   return (
     <ChartFrame
       title={title}
-      badges={<StatusBadge {...b} size="md" />}
+      badges={
+        <>
+          {/* 합계는 워커만 더한 값이다(서버 `scope.basis`). 마스터 합계를 겹쳐 그리지 않는다 — 디자인 2.5 */}
+          <Chip label="워커 기준" icon="server" tooltip={WORKER_BASIS_HELP} />
+          <StatusBadge {...b} size="md" />
+        </>
+      }
       subtitle={
         <div className="stack-sm">
           <ReasonText reasons={reasonTexts(info)} status={b.status} />
@@ -426,7 +503,13 @@ function ClusterUsageCard({ kind }: { kind: UsageKind }) {
       height="md"
       state={state}
       unknownReason={`알 수 없음 (${unavailableReason})`}
-      unknownHint="EKS 애드온 metrics-server를 설치하면 표시됩니다"
+      unknownHint={
+        <>
+          {METRICS_OFF_HINT}
+          <br />
+          <span className="text-caption-tertiary">{METRICS_OFF_IMPACT}</span>
+        </>
+      }
       staleAt={mark.at}
       tableView={{ pressed: asTable, onToggle: () => setAsTable((v) => !v) }}
     >

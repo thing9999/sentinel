@@ -30,7 +30,8 @@ export interface StoredRateSample {
     ec2: number;
     ebs: number;
     lb: number;
-    eks: number;
+    /** DB 열 control_plane_usd_per_hour (구 eks_usd_per_hour) */
+    controlPlane: number;
     ipv4: number;
   };
   nodeCount: number;
@@ -255,7 +256,7 @@ export class CostStore {
       ec2UsdPerHour: s.byCategory.ec2,
       ebsUsdPerHour: s.byCategory.ebs,
       lbUsdPerHour: s.byCategory.lb,
-      eksUsdPerHour: s.byCategory.eks,
+      controlPlaneUsdPerHour: s.byCategory.controlPlane,
       ipv4UsdPerHour: s.byCategory.ipv4,
       nodeCount: s.nodeCount,
       unpricedCount: s.unpricedCount,

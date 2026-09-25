@@ -10,7 +10,6 @@ import type {
 } from './aws/aws-gateway';
 import type { ClusterInventorySnapshot } from './cluster-inventory.port';
 import type {
-  AwsEksCluster,
   AwsInstance,
   AwsLoadBalancer,
   AwsResourceSnapshot,
@@ -31,7 +30,6 @@ export class FakeGateway implements CostAwsGateway {
     describeInstances: 0,
     describeVolumes: 0,
     describeLoadBalancers: 0,
-    describeEksCluster: 0,
     getProducts: 0,
     getLatestSpotPrice: 0,
     getCostAndUsagePage: 0,
@@ -40,7 +38,6 @@ export class FakeGateway implements CostAwsGateway {
   instances: AwsInstance[] = [];
   volumes: AwsVolume[] = [];
   lbs: AwsLoadBalancer[] = [];
-  eks: AwsEksCluster | null = null;
   products: (
     serviceCode: string,
     filters: Record<string, string>,
@@ -83,10 +80,6 @@ export class FakeGateway implements CostAwsGateway {
   describeLoadBalancers(): Promise<AwsLoadBalancer[]> {
     this.hit('describeLoadBalancers');
     return Promise.resolve(this.lbs);
-  }
-  describeEksCluster(): Promise<AwsEksCluster | null> {
-    this.hit('describeEksCluster');
-    return Promise.resolve(this.eks);
   }
   getProducts(
     serviceCode: string,
@@ -143,7 +136,6 @@ export function priceBook(p: Partial<PriceBook> = {}): PriceBook {
     ebs: {},
     lb: {},
     ipv4: null,
-    eks: { standard: null, extended: null },
     meta: {
       fetchedAt: null,
       cacheUsed: false,
@@ -177,7 +169,6 @@ export function awsSnapshot(
     instances: [],
     volumes: [],
     loadBalancers: [],
-    eks: null,
     ...p,
   };
 }

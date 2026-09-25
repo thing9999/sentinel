@@ -32,7 +32,7 @@ VS Code의 Claude Code 세션이 이 문서를 먼저 읽고 이어서 작업한
 - **역할별 몫**: 기획=지표·경고 기준, DBA=상태 조회 쿼리·모니터링 계정, 백엔드=`cluster`·`db-health`·`stream` 모듈과 `deploy/rbac.yaml`, 디자인/퍼블리싱=상태 카드·표·배지, 프론트=SSE 구독·차트.
 
 ### 결정됨 (2026-09-19)
-- 환경: EKS + 클러스터 안의 Postgres, ORM: Prisma
+- 환경: **kOps 클러스터(컨트롤 플레인도 사용자 소유 EC2)** + 클러스터 안의 Postgres, ORM: Prisma
 - 추가 기능: `aws-cost`(실시간 비용 추정·예측), `architecture-advisor`(로컬 Claude Code 연결). 상세는 `CLAUDE.md` "확정된 결정"
 - 로컬 PC에 Docker·kubeconfig·AWS 자격 증명이 없음 → `DATA_SOURCE=mock` 기본
 

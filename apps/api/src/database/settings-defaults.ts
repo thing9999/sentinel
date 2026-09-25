@@ -61,6 +61,11 @@ export const SETTING_DEFAULTS = {
         warnAbsUsdPerHour: 0.5,
         critRatio: 2.0,
         critAbsUsdPerHour: 1.0,
+        // 기준선에 넣을 표본의 하한 시각(ISO8601 UTC). null이면 제한 없음(baselineDays 전체).
+        // 비용 정의가 바뀐 시점(예: EKS 관리 요금 -> kOps 컨트롤 플레인 실비, 마이그레이션
+        // 20260924120000_control_plane_cost_column)을 넘겨 옛 정의의 표본이 중앙값에 섞이지
+        // 않게 한다. 전환 직후에는 기준선이 "수집 중"이 되고 minBaselineHours 뒤에 다시 판단한다.
+        baselineFrom: null as string | null,
       },
       daily: {
         baselineDays: 7,
@@ -125,6 +130,58 @@ export const SETTING_DEFAULTS = {
       dbPvcUsageCritPct: 90,
     },
   },
+  alerts: {
+    description:
+      '알림 전이·억제·플래핑·워밍업 기준 (alerts 3.2). 화면에서 편집하지 않는다 — SQL/API로만',
+    value: {
+      /** 억제 창(분). 같은 키의 사건을 이 창 안에서는 기존 알림에 합친다 (3.2.2) */
+      dedupeWindowMin: 15,
+      /** 영향 객체가 새로 늘면 등급이 같아도 사건으로 친다 (3.2.2) */
+      notifyOnNewTarget: true,
+      /** 플래핑 창(분)과 전이 횟수 기준 (3.2.3) */
+      flapWindowMin: 30,
+      flapTransitions: 4,
+      /** recent_transitions에 남길 최대 항목 수 (창 밖은 잘라낸다) */
+      flapTransitionsMax: 50,
+      /** 시작 후 알림을 만들지 않는 구간(초). 끝나면 요약 1건 (3.2.5) */
+      warmupSec: 120,
+      /** unknown이 이만큼 이어져야 "확인 불가" 알림을 만든다 (3.2.4) */
+      unknownAfterMin: 5,
+      /** kube 출처가 이만큼 stale이면 출처 억제에 들어간다 (3.2.4) */
+      sourceSuppressAfterMin: 3,
+      /** heartbeat 갱신 주기(초). 재시작 후 "정지 구간" 계산 (3.2.5) */
+      heartbeatIntervalSec: 60,
+      /** 대시보드 DB가 없을 때 메모리에 두는 알림 수 (3.7) */
+      memoryFallbackMax: 200,
+      /** 주기적 재알림(분). null = 끔. P3 (3.2.2, PM 결정 Q7) */
+      repeatEveryMin: null as number | null,
+      /** alert_key_states.last_notified_targets 상한 */
+      lastNotifiedTargetsMax: 200,
+    },
+  },
+  'alerts.discord': {
+    description:
+      '디스코드 발송 설정 (alerts 3.3.2·3.4.2). 웹훅 주소는 여기에 없다 — 별도 key alerts.discord.webhookUrl',
+    value: {
+      /** 끄면 디스코드로 보내지 않는다. 화면 알림 센터에는 계속 쌓인다 */
+      enabled: true,
+      /** 보낼 심각도 하한: critical = "장애만", warning = "주의부터" */
+      minSeverity: 'critical' as 'critical' | 'warning',
+      /** 확인 불가(unknown)는 심각도 순서와 별개 축이다 (3.2.4) */
+      sendUnknown: true,
+      /** 발송 속도 상한(초에 1건) */
+      minIntervalSec: 2,
+      /** 실패 재시도: 5초 → 30초 → 120초 후 포기 */
+      backoffSec: [5, 30, 120] as readonly number[],
+      /** 연속 실패가 이 수를 넘으면 발송을 failureCooldownMin 동안 멈춘다 */
+      failureCircuitCount: 10,
+      failureCooldownMin: 60,
+      /** 테스트 발송 쿨다운(초) (3.5) */
+      testCooldownSec: 60,
+      /** 허용 호스트. 그 밖의 URL은 저장 단계에서 거부한다 (PM 결정 Q9, SSRF 방지) */
+      allowedHosts: ['discord.com', 'discordapp.com'] as readonly string[],
+    },
+  },
   retention: {
     description: '데이터 보존 기간 (docs/db/schema.md 3절)',
     value: {
@@ -135,9 +192,29 @@ export const SETTING_DEFAULTS = {
       advisorRunDays: 90,
       advisorRunMaxCount: 50,
       advisorRawResponseMaxBytes: 262_144,
+      /** 알림 이력: 90일 또는 data_source별 2,000건 중 먼저 닿는 쪽 (PM 결정 Q12) */
+      alertDays: 90,
+      alertMaxRows: 2_000,
+      /** 한 번에 지우는 행 수. 화면이 멎지 않게 잘게 나눈다 (docs/db/schema.md 3절) */
+      alertPurgeBatchSize: 500,
     },
   },
 } as const;
+
+/**
+ * **비밀값 설정 key** — 이 목록의 key는 `SETTING_DEFAULTS`에 **일부러 넣지 않았다.**
+ * 그래서 `SettingsService.get()/peek()`으로는 타입 단계에서 읽을 수 없고, 읽기·쓰기는
+ * `src/database/secret-settings.ts`의 전용 함수로만 한다 (docs/db/schema.md 2.12).
+ * 설정을 목록으로 응답할 일이 생기면 반드시 `isSecretSettingKey()`로 걸러 낸다.
+ */
+export const SECRET_SETTING_KEYS = ['alerts.discord.webhookUrl'] as const;
+
+export type SecretSettingKey = (typeof SECRET_SETTING_KEYS)[number];
+
+/** 이 key의 값은 어떤 API 응답·로그·SSE에도 실어서는 안 된다. */
+export function isSecretSettingKey(key: string): key is SecretSettingKey {
+  return (SECRET_SETTING_KEYS as readonly string[]).includes(key);
+}
 
 export type SettingKey = keyof typeof SETTING_DEFAULTS;
 export type SettingValue<K extends SettingKey> =

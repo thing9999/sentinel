@@ -11,7 +11,7 @@
 ```
 apps/api/src/database/health/
   types.ts               벤더 공통: HealthLevel, HealthCheckResult, HealthQuery, worstLevel()
-  sanitize.ts            민감값 가림·잘라내기 (쿼리 원문, 접속 문자열, 오류 메시지)
+  sanitize.ts            민감값 가림·잘라내기 (쿼리 원문, 접속 문자열, 오류 메시지, 디스코드 웹훅 URL)
   postgres/queries.ts    SQL 상수 + PG_HEALTH_QUERIES(주기·타임아웃 메타) + pgQueryTransaction()
   postgres/types.ts      행 타입(Pg*Row), 원시 표본(PgRawSample), 정규화 결과(PgHealthSnapshot)
   postgres/normalize.ts  normalizePgHealth(), pgUnreachableSnapshot(), approxPvcUsagePct(), 기본 기준값
@@ -305,7 +305,9 @@ const { snapshot, next } = pgUnreachableSnapshot(err, { prev, collectedAt: new D
 | 쿼리 원문 (`pg_stat_activity.query`) | **조회하지 않는다.** 명세 가정 A7·수용 기준 "세션 목록에 쿼리 원문이 나오지 않는다". 테스트로 확인(`normalize.spec.ts`) |
 | 클라이언트 주소·호스트·포트, `application_name` | 조회하지 않는다 (어드바이저 스냅샷 제외 규칙 3.4와 동일) |
 | `pg_stat_wal_receiver.conninfo` | 조회하지 않는다 (복제 비밀번호) |
-| 접속·쿼리 오류 메시지 | `sanitizeErrorMessage()`: URL 비밀번호·`password=`·`token`·AWS 키·PEM 가림, 줄바꿈 제거, 200자, SQLSTATE 접두사 |
+| 접속·쿼리 오류 메시지 | `sanitizeErrorMessage()`: URL 비밀번호·`password=`·`token`·AWS 키·PEM·**디스코드 웹훅 URL**·**Postgres 오류 설명의 값**(`Key (col)=(…)`) 가림, 줄바꿈 제거, 200자, SQLSTATE 접두사 |
+| Postgres **서버 로그 줄**의 값 (logs 기능 `sql_statement` 규칙, AC-LOG49) | `maskPgLogValues(line)`, 여러 줄에 걸친 문장은 `createPgLogValueMasker()`. `DETAIL: Key (col)=(값)`·`Failing row contains (…)`·`parameters: $1 = '…'`·`STATEMENT:`/`LOG: statement:`/`execute <name>:` 뒤 SQL 리터럴·`CONTEXT: SQL statement "…"`를 `?`로 바꾼다. **테이블·컬럼·제약 이름·타임스탬프·PID는 남긴다**(통째로 지우지 않는다). 리터럴 스캐너는 `maskSqlLiterals`를 재사용한다 — 규칙이 두 벌이 되지 않게 |
+| 디스코드 웹훅 URL | `redactSecrets()`가 **통째로** 가린다(`[웹훅 주소 가림]`). 경로에 토큰이 들어 있어 **주소 자체가 비밀값**이다(`docs/specs/alerts.md` 3.4.3). 패턴은 `DISCORD_WEBHOOK_URL_PATTERN`(`sanitize.ts`), 저장·조회는 `src/database/secret-settings.ts` 전용 함수로만 한다(`docs/db/schema.md` 2.12) |
 | 쿼리 원문을 꼭 다뤄야 할 때(디버그 로그 등, 기본 사용 안 함) | `sanitizeQueryText(sql, 120)`: 문자열·숫자·달러 인용 리터럴 → `?`, 주석 제거, 공백 정리, 비밀 패턴 가림, 120자. `track_activity_query_size`로 잘린 닫히지 않은 리터럴도 끝까지 가림 |
 | DB 사용자 이름 | 세션·잠금 목록에 표시(명세 S3). 어드바이저 스냅샷으로는 보내지 않는다(backend 책임, 명세 3.4) |
 
@@ -347,7 +349,10 @@ PGlite(Postgres 17.5 엔진)로 확인한 결과: 이 계정으로 대시보드 
        psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f -
    ```
 
-   - 스크립트는 세션 안에서 `log_statement = 'none'`으로 바꿔 비밀번호가 든 문장이 서버 로그에 남지 않게 한다(superuser 필요).
+   - 스크립트는 세션 안에서 `log_statement='none'`·`log_min_duration_statement=-1`·`log_min_error_statement='panic'`으로 바꿔, 비밀번호가 든 문장이 **성공하든 실패하든** 서버 로그에 남지 않게 한다(superuser 필요, 세션 한정이라 서버 설정은 그대로).
+     - 셋이 막는 것이 다르다: `log_statement`는 **성공한** 문장, `log_min_duration_statement`는 **느린** 문장, `log_min_error_statement`는 **실패한** 문장이다. 세 번째는 **기본값이 `error`**라 앞 두 개로는 못 막는다 — 오타·권한 부족으로 `ALTER ROLE … PASSWORD '…'`가 깨지면 비밀번호가 평문으로 파드 로그에 남고, 로그 화면(`docs/specs/logs.md`)에서 그대로 보인다.
+     - **진단은 잃지 않는다.** `ON_ERROR_STOP=1`이라 오류는 실행한 사람의 화면에 그대로 뜬다. 가려지는 것은 서버 로그에 남는 사본뿐이다.
+     - 전부 `SET`이라 **이 psql 세션에만** 적용된다. `ALTER SYSTEM`/`ALTER DATABASE`/`ALTER ROLE` 같은 영구 설정은 건드리지 않는다 — 모니터링 대상 DB에 쓰기를 하지 않는다는 원칙(`CLAUDE.md`) 때문이다.
    - 이미 계정이 있으면 속성·비밀번호만 다시 맞춘다(멱등). 비밀번호 교체도 같은 명령.
    - 파드 이미지에 따라 superuser 이름이 `postgres`가 아닐 수 있다(예: 오퍼레이터 사용 시). `-U`를 맞춘다.
    - 마지막 확인 쿼리 결과가 `superuser=f, conn_limit=3, has_pg_monitor=t`인지 본다.

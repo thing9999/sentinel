@@ -33,6 +33,8 @@ import type {
   Areas,
   AttentionItem,
   ClusterMetricsBody,
+  ControlPlaneBody,
+  ControlPlaneMetricsBlock,
   DbAreaProvider,
   EventItem,
   NodeItem,
@@ -43,7 +45,13 @@ import type {
   ResourceRef,
   WorkloadItem,
 } from '../types';
+import {
+  buildLogHref,
+  buildPodKeyLogHref,
+  type LogLinkPolicyValue,
+} from '../../logs/log-href';
 import { restartTotal, type ClusterStore } from './cluster-store';
+import { evaluateControlPlane } from './control-plane';
 import type { MetricsStore } from './metrics-store';
 
 export type ClusterThresholds = SettingValue<'cluster.thresholds'>;
@@ -53,6 +61,8 @@ const HOUR_MS = 3_600_000;
 export interface SourceView {
   state: SourceState;
   lastSuccessAt: string | null;
+  /** 출처 오류 코드 (예: KUBE_AUTH_FAILED). 판단 이유 코드에 그대로 쓴다 */
+  errorCode?: string | null;
 }
 
 export interface EvalInput {
@@ -69,7 +79,18 @@ export interface EvalInput {
   pvcUsageProm: { at: string; values: Map<string, number> } | null;
   clusterName: string | null;
   metricsIntervalSec: number;
+  /** 마스터 대수(단일·짝수) 판단을 켜고 끄는 설정 (env CONTROL_PLANE_HA_EXPECTED) */
+  controlPlaneHaExpected: boolean;
+  /**
+   * 로그 링크 가능 여부 (`LOGS_ENABLED`·`LOG_DENY_NAMESPACES` + mock `logs=disabled`).
+   * **링크를 평가 단계에서 채운다** — REST와 SSE가 같은 항목 객체를 쓰므로 값이 갈라지지 않는다
+   * (2026-09-25 결함: SSE의 `ControlPlaneComponent.logHref`만 항상 null이었다).
+   * 생략하면 로그 링크를 주지 않는다(모든 `logHref: null`).
+   */
+  logLinks?: LogLinkPolicyValue;
 }
+
+const NO_LOG_LINKS: LogLinkPolicyValue = { enabled: false, denyNamespaces: [] };
 
 export interface ClusterView {
   at: number;
@@ -87,6 +108,7 @@ export interface ClusterView {
   pvcMap: Map<string, PvcItem>;
   pvcUsageSource: 'prometheus' | 'db_size_approx' | 'none';
   metrics: ClusterMetricsBody;
+  controlPlane: ControlPlaneBody;
   areas: Areas;
   overall: StatusInfo;
   attention: AttentionItem[];
@@ -285,6 +307,16 @@ export function evaluateCluster(input: EvalInput): ClusterView {
       lastSeenAt: e.lastSeenAt,
       severe,
       sourceComponent: e.sourceComponent,
+      // 진입점 4: 대상이 파드일 때만. 그 시각(lastSeenAt)을 보러 가는 링크다 (follow 없음)
+      logHref:
+        e.involved.kind === 'Pod' && e.involved.namespace
+          ? buildLogHref(input.logLinks ?? NO_LOG_LINKS, {
+              entry: 'event',
+              namespace: e.involved.namespace,
+              pod: e.involved.name,
+              at: e.lastSeenAt,
+            }).href
+          : null,
     });
     if (severe && now - last <= eventWindowMs) {
       const k = `${e.involved.kind}/${e.involved.namespace ?? ''}/${e.involved.name}`;
@@ -436,25 +468,57 @@ export function evaluateCluster(input: EvalInput): ClusterView {
   );
 
   // --- 영역 ------------------------------------------------------------------
-  const sourceReason = kubeSourceReason(kubeState, store.initialSyncDone);
+  const sourceReason = kubeSourceReason(
+    kubeState,
+    store.initialSyncDone,
+    input.kube.errorCode,
+  );
   const activePods = pods.filter((p) => !p.completed);
 
+  // --- 컨트롤 플레인 ------------------------------------------------------------
+  const cp = evaluateControlPlane({
+    now,
+    atIso,
+    store,
+    rawNodes: store.nodes,
+    nodes,
+    podItems: pods,
+    rawPods: store.pods,
+    kubeStale,
+    sourceReason,
+    haExpected: input.controlPlaneHaExpected,
+    podsUsable: sourceReason === null,
+    metrics: metricsBody.controlPlane,
+    logLinks: input.logLinks ?? NO_LOG_LINKS,
+    mk,
+  });
+
+  // 노드 영역은 **워커만** 센다 (kops-support 3.1). 마스터는 컨트롤 플레인 영역에서 따로 본다
+  const workerNodes = nodes.filter((n) => n.role === 'worker');
   const nodesReasons: Reason[] = [];
   if (sourceReason) nodesReasons.push(sourceReason);
   else {
-    if (nodes.length === 0)
-      nodesReasons.push(reason('CLUSTER_NO_NODES', '노드 0개', 'critical'));
-    else if (nodes.every((n) => n.ready.value !== 'True'))
+    if (workerNodes.length === 0)
       nodesReasons.push(
-        reason('CLUSTER_ALL_NODES_NOT_READY', '모든 노드 NotReady', 'critical'),
+        reason('CLUSTER_NO_WORKER_NODES', '워커 노드 없음', 'critical'),
       );
-    nodesReasons.push(...itemReasons(nodes, (n) => shortNodeName(n.name)));
+    else if (workerNodes.every((n) => n.ready.value !== 'True'))
+      nodesReasons.push(
+        reason(
+          'CLUSTER_ALL_WORKERS_NOT_READY',
+          '모든 워커 NotReady',
+          'critical',
+        ),
+      );
+    nodesReasons.push(
+      ...itemReasons(workerNodes, (n) => shortNodeName(n.name)),
+    );
   }
   const nodesArea: Areas['nodes'] = {
     status: mk('area:nodes', nodesReasons),
-    ready: nodes.filter((n) => n.ready.value === 'True').length,
-    total: nodes.length,
-    problems: problems(nodes, (n) => ({
+    ready: workerNodes.filter((n) => n.ready.value === 'True').length,
+    total: workerNodes.length,
+    problems: problems(workerNodes, (n) => ({
       kind: 'Node',
       namespace: null,
       name: n.name,
@@ -588,12 +652,14 @@ export function evaluateCluster(input: EvalInput): ClusterView {
     events: eventsArea,
     db: dbArea,
     metrics: metricsArea,
+    controlPlane: cp.area,
   };
 
   // --- 전체 ------------------------------------------------------------------
   const overallReasons: Reason[] = [];
   const areaLabel: [keyof Areas, string][] = [
     ['nodes', '노드'],
+    ['controlPlane', ''],
     ['workloads', '워크로드'],
     ['pods', '파드'],
     ['events', ''],
@@ -676,6 +742,15 @@ export function evaluateCluster(input: EvalInput): ClusterView {
       statusChangedAt: e.firstSeenAt,
     });
   }
+  for (const a of cp.attention) {
+    attention.push({
+      area: 'control_plane',
+      ref: a.ref,
+      status: a.status,
+      reason: a.reason,
+      statusChangedAt: cp.body.status.statusChangedAt,
+    });
+  }
   if (dbSummary) attention.push(...dbSummary.attention);
   for (const [k, label] of [
     ['cpu', 'CPU'],
@@ -719,6 +794,7 @@ export function evaluateCluster(input: EvalInput): ClusterView {
     pvcMap,
     pvcUsageSource,
     metrics: metricsBody,
+    controlPlane: cp.body,
     areas,
     overall,
     attention,
@@ -731,16 +807,27 @@ function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function kubeSourceReason(state: SourceState, synced: boolean): Reason | null {
+function kubeSourceReason(
+  state: SourceState,
+  synced: boolean,
+  errorCode?: string | null,
+): Reason | null {
   switch (state) {
     case 'not_configured':
       return reason('SOURCE_NOT_CONFIGURED', '클러스터 연결 없음', 'unknown');
     case 'unavailable':
-      return reason(
-        'SOURCE_UNAVAILABLE',
-        '알 수 없음 (클러스터 조회 실패)',
-        'unknown',
-      );
+      // 인증 실패는 따로 알린다 (토큰 만료. mock으로 대체하지 않는다 — common.md 2.3)
+      return errorCode === 'KUBE_AUTH_FAILED'
+        ? reason(
+            'KUBE_AUTH_FAILED',
+            '인증 실패 — 토큰이 만료됐을 수 있습니다',
+            'unknown',
+          )
+        : reason(
+            'SOURCE_UNAVAILABLE',
+            '알 수 없음 (클러스터 조회 실패)',
+            'unknown',
+          );
     case 'syncing':
       return synced
         ? null
@@ -1043,6 +1130,8 @@ function evaluatePod(
     limits,
     memoryLimitPct,
     cpuRequestPct,
+    // 진입점 1·2·7 (파드 상세·파드 목록 행·DB 파드). 규칙은 logs/log-href.ts 한 곳이다
+    logHref: buildPodKeyLogHref(input.logLinks ?? NO_LOG_LINKS, 'pod', key),
   };
 }
 
@@ -1199,6 +1288,7 @@ function evaluateNode(
   return {
     name: n.name,
     status: mk(`node:${n.name}`, reasons),
+    role: n.role,
     instanceType: n.instanceType,
     zone: n.zone,
     nodeGroup: n.nodeGroup,
@@ -1338,6 +1428,12 @@ function evaluateWorkload(
         }
       : null,
     source: 'watch',
+    // 진입점 5: 소속 파드 선택기가 붙은 로그 화면 (logs.md 11.4)
+    logHref: buildLogHref(input.logLinks ?? NO_LOG_LINKS, {
+      entry: 'workload',
+      namespace: w.namespace,
+      workloadKey: key,
+    }).href,
   };
 }
 
@@ -1423,31 +1519,41 @@ function evaluateClusterMetrics(
   mk: Mk,
 ): ClusterMetricsBody {
   const { t, metrics } = input;
-  let allocCpu = 0;
-  let allocMem = 0;
-  let useCpu = 0;
-  let useMem = 0;
-  let reqCpu = 0;
-  let reqMem = 0;
-  let limCpu = 0;
-  let limMem = 0;
+  // 클러스터 합계는 **워커만** (AC-KOPS12). 마스터는 controlPlane 블록으로 분리한다
+  const acc = () => ({
+    allocCpu: 0,
+    allocMem: 0,
+    useCpu: 0,
+    useMem: 0,
+    reqCpu: 0,
+    reqMem: 0,
+    limCpu: 0,
+    limMem: 0,
+    count: 0,
+  });
+  const worker = acc();
+  const master = acc();
   for (const n of nodes.values()) {
-    allocCpu += n.allocatable.cpuMillicores;
-    allocMem += n.allocatable.memoryBytes;
+    const a = n.role === 'control_plane' ? master : worker;
+    a.count += 1;
+    a.allocCpu += n.allocatable.cpuMillicores;
+    a.allocMem += n.allocatable.memoryBytes;
     const u = metrics.state.nodes.get(n.name);
     if (u) {
-      useCpu += u.cpuMillicores;
-      useMem += u.memoryBytes;
+      a.useCpu += u.cpuMillicores;
+      a.useMem += u.memoryBytes;
     }
     for (const p of podsByNode.get(n.name) ?? []) {
       const r = sumAmountsLoose(p.containers, 'requests');
       const l = sumAmountsLoose(p.containers, 'limits');
-      reqCpu += r.cpu;
-      reqMem += r.mem;
-      limCpu += l.cpu;
-      limMem += l.mem;
+      a.reqCpu += r.cpu;
+      a.reqMem += r.mem;
+      a.limCpu += l.cpu;
+      a.limMem += l.mem;
     }
   }
+  const { allocCpu, allocMem, useCpu, useMem, reqCpu, reqMem, limCpu, limMem } =
+    worker;
   const updatedAt = metrics.state.collectedAt;
   const src = input.metricsSource.state;
   const unavailable: Reason | null =
@@ -1484,6 +1590,31 @@ function evaluateClusterMetrics(
   const cpuUsagePct = metricsOk ? pct(useCpu, allocCpu) : null;
   const memUsagePct = metricsOk ? pct(useMem, allocMem) : null;
   const since = metrics.seriesSince;
+  const controlPlane: ControlPlaneMetricsBlock =
+    master.count === 0
+      ? { available: false, nodeCount: 0, cpu: null, memory: null }
+      : {
+          available: true,
+          nodeCount: master.count,
+          cpu: {
+            allocatableMillicores: master.allocCpu,
+            usageMillicores: metricsOk ? Math.round(master.useCpu) : null,
+            usagePct: metricsOk ? pct(master.useCpu, master.allocCpu) : null,
+            requestsMillicores: master.reqCpu,
+            requestsPct: pct(master.reqCpu, master.allocCpu),
+            limitsMillicores: master.limCpu,
+            limitsPct: pct(master.limCpu, master.allocCpu),
+          },
+          memory: {
+            allocatableBytes: master.allocMem,
+            usageBytes: metricsOk ? Math.round(master.useMem) : null,
+            usagePct: metricsOk ? pct(master.useMem, master.allocMem) : null,
+            requestsBytes: master.reqMem,
+            requestsPct: pct(master.reqMem, master.allocMem),
+            limitsBytes: master.limMem,
+            limitsPct: pct(master.limMem, master.allocMem),
+          },
+        };
   return {
     available: metricsOk,
     unavailableReason: metricsOk
@@ -1493,6 +1624,11 @@ function evaluateClusterMetrics(
           ? { code: 'SOURCE_NOT_CONFIGURED', message: '클러스터 연결 없음' }
           : { code: 'METRICS_NOT_COLLECTED', message: '아직 수집 전' })),
     updatedAt,
+    scope: {
+      basis: 'worker',
+      workerNodeCount: worker.count,
+      controlPlaneNodeCount: master.count,
+    },
     cpu: {
       status: usageStatus('cpu', cpuUsagePct),
       allocatableMillicores: allocCpu,
@@ -1513,6 +1649,7 @@ function evaluateClusterMetrics(
       limitsBytes: limMem,
       limitsPct: pct(limMem, allocMem),
     },
+    controlPlane,
     thresholds: {
       cpu: { warnPct: t.nodeCpuWarnPct, critPct: t.nodeCpuCritPct },
       memory: { warnPct: t.nodeMemoryWarnPct, critPct: t.nodeMemoryCritPct },

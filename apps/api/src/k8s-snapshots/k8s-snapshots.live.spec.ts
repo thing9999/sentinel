@@ -76,10 +76,9 @@ function fakeWatcher() {
   };
   const client = {
     kc: {
-      getCurrentContext: () =>
-        'arn:aws:eks:ap-northeast-2:123456789012:cluster/prod-eks',
+      getCurrentContext: () => 'prod.k8s.example.com',
     },
-    clusterName: () => 'prod-eks',
+    clusterName: () => 'prod.k8s.example.com',
   };
   return { watcher, client, calls };
 }
@@ -284,7 +283,7 @@ describe('K8sSnapshotsService (live, 파일 시스템)', () => {
     expect(sum.summary.dashboardCluster).toMatchObject({
       state: 'ok',
       id: MOCK_CLUSTER_ID,
-      context: 'prod-eks',
+      context: 'prod.k8s.example.com',
     });
     expect(sum.summary.latestDrift?.snapshotId).toBe(K8S_MOCK_IDS.latest);
     expect(sum.summary.latestDrift?.drift.status.reasons[0].text).toBe(

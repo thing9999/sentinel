@@ -40,6 +40,12 @@ export class ClusterController {
     return this.query.nodes(q);
   }
 
+  /** 컨트롤 플레인 상세 (계약 3.3). 쿼리 없음, 항상 200 */
+  @Get('cluster/control-plane')
+  controlPlane() {
+    return this.query.controlPlane();
+  }
+
   @Get('cluster/nodes/:name')
   node(@Param('name') name: string) {
     return this.query.node(name);

@@ -1,9 +1,11 @@
 /**
- * 어드바이저 출력 스키마 (promptVersion: advisor-v1)
+ * 어드바이저 출력 스키마 (promptVersion: advisor-v2)
+ * v2: kOps 전환으로 스냅샷 cluster 블록이 바뀌었다(platform kops, workerCount/controlPlaneCount,
+ *     cluster.controlPlane, 비용 카테고리 controlPlane). api와 함께 배포한다 — 구 v1은 받지 않는다.
  * 계약: docs/api/architecture-advisor.md B.4. api가 같은 규칙으로 다시 검증한다.
  * 프롬프트·스키마는 브리지가 소유한다 (api는 스냅샷만 보낸다).
  */
-export const PROMPT_VERSION = 'advisor-v1';
+export const PROMPT_VERSION = 'advisor-v2';
 export const SUPPORTED_PROMPT_VERSIONS: readonly string[] = [PROMPT_VERSION];
 
 export const ADVISOR_OUTPUT_SCHEMA: Record<string, unknown> = {

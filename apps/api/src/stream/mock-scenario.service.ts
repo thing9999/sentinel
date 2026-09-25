@@ -26,6 +26,8 @@ const GROUP_ORDER: MockScenarioGroup[] = [
   'advisor',
   'snapshots',
   'k8s-snapshots',
+  'alerts',
+  'logs',
 ];
 
 const GROUP_LABEL: Record<MockScenarioGroup, string> = {
@@ -35,6 +37,8 @@ const GROUP_LABEL: Record<MockScenarioGroup, string> = {
   advisor: '어드바이저',
   snapshots: 'AWS 스냅샷',
   'k8s-snapshots': 'Kubernetes 스냅샷',
+  alerts: '알림',
+  logs: '로그',
 };
 
 /** 기본 시나리오 (docs/api/common.md 6.1). 목록에 없으면 첫 번째 */
@@ -45,6 +49,8 @@ const DEFAULT_SCENARIO: Record<MockScenarioGroup, string> = {
   advisor: 'normal',
   snapshots: 'default',
   'k8s-snapshots': 'default',
+  alerts: 'default',
+  logs: 'direct',
 };
 
 /** 시나리오 표시 문구 (계약 6.1 표). 없는 ID는 ID 그대로 */

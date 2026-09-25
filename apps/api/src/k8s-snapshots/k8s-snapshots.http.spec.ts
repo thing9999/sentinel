@@ -207,7 +207,7 @@ describe('k8s-snapshots HTTP (mock)', () => {
     );
     expect(row(ids.partial).status.reasons[0].code).toBe('PARTIAL_EXPORT');
     expect(row(ids.labeled).modifiedByDashboard).toBe(true);
-    expect(row(ids.labeled).label).toBe('EKS 1.34 업그레이드 전');
+    expect(row(ids.labeled).label).toBe('kOps 1.34 업그레이드 전');
     // 드리프트는 파일 상태에 섞이지 않는다 (두 축)
     const latest = row(ids.latest);
     expect(latest.drift).toMatchObject({
@@ -220,7 +220,7 @@ describe('k8s-snapshots HTTP (mock)', () => {
     );
     expect(row(ids.staging).drift.status.reasons[0]).toMatchObject({
       code: 'CLUSTER_MISMATCH',
-      text: '다른 클러스터의 스냅샷 (staging-eks)',
+      text: '다른 클러스터의 스냅샷 (staging.k8s.example.com)',
     });
     expect(row(ids.metaCorrupt).drift.status.reasons[0].code).toBe(
       'CLUSTER_ID_MISSING',
@@ -243,7 +243,7 @@ describe('k8s-snapshots HTTP (mock)', () => {
     expect(b.summary.latestDrift.snapshotId).toBe(ids.latest);
     expect(b.summary.dashboardCluster).toMatchObject({
       state: 'mock',
-      name: 'prod-eks',
+      name: 'prod.k8s.example.com',
     });
     expect(b.cli.exitCodes.map((x: Body) => x.code)).toEqual([0, 1, 2, 3, 4]);
     expect(JSON.stringify(b)).not.toContain('example-password');
@@ -622,10 +622,10 @@ describe('k8s-snapshots HTTP (mock)', () => {
     ).body as Body;
     expect(del.trashItem.cluster).toEqual({
       context: 'sentinel-snapshot',
-      name: 'prod-eks',
+      name: 'prod.k8s.example.com',
     });
     expect(del.summary.trashCount).toBe(2);
-    // 자동 대상이 남은 prod-eks 스냅샷 중 가장 최신으로 바뀐다
+    // 자동 대상이 남은 prod.k8s.example.com 스냅샷 중 가장 최신으로 바뀐다
     const sum = (await http().get('/api/k8s-snapshots/summary').expect(200))
       .body as Body;
     expect(sum.summary.latestDrift.snapshotId).toBe(ids.envLiteral);

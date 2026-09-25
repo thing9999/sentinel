@@ -1,8 +1,9 @@
 # Sentinel
 
-EKS 클러스터와 AWS 비용을 한곳에서 보는 **조회 전용** 대시보드. 클러스터와 모니터링 대상 DB에 쓰기 작업을 하지 않는다.
+**kOps로 만든 쿠버네티스 클러스터**와 AWS 비용을 한곳에서 보는 **조회 전용** 대시보드. 클러스터와 모니터링 대상 DB에 쓰기 작업을 하지 않는다.
+컨트롤 플레인(마스터)도 사용자 소유 EC2이므로 워커와 나눠서 보여 준다.
 
-> 상태: 개발 중. 모든 기능이 mock 데이터로만 검증됐고 **실제 EKS 클러스터·AWS 계정에는 아직 붙여 보지 않았다.**
+> 상태: 개발 중. 모든 기능이 mock 데이터로만 검증됐고 **실제 kOps 클러스터·AWS 계정에는 아직 붙여 보지 않았다.**
 
 ## 무엇을 하나
 
@@ -52,6 +53,10 @@ npm run dev --prefix apps/web                          # :3000
 npm run dev --prefix apps/agent-bridge   # :3002
 ```
 
+> **api와 agent-bridge는 반드시 함께 배포·재시작한다.** 어드바이저 스냅샷 형식이 바뀔 때마다 `promptVersion`을 올리고(현재 **`advisor-v2`**) 브리지는 **그 버전만** 받는다.
+> 한쪽만 올리면 분석 요청이 400 `unsupported_prompt_version`으로 떨어져 **어드바이저만 조용히 죽는다**(다른 화면은 멀쩡해 보인다).
+> 버전 상수는 `apps/api/src/advisor/run/advisor-run.service.ts`와 `apps/agent-bridge/src/agent/output-schema.ts` 두 곳에 있다.
+
 `DATA_SOURCE=mock`이 기본값이다. `live`인데 연결 설정이 없는 출처는 mock으로 바꾸지 않고 `unknown`으로 표시한다.
 
 ## 스냅샷 CLI
@@ -77,13 +82,42 @@ npm run export --prefix deploy/k8s-snapshot
 
 읽기 전용으로만 쓴다.
 
-- **AWS**: `pricing:GetProducts`, `ce:GetCostAndUsage`, `ce:GetCostForecast`, `ec2:Describe*`(인스턴스·볼륨·스팟 가격), `elasticloadbalancing:Describe*`, `eks:DescribeCluster`
+- **AWS**: `pricing:GetProducts`, `ce:GetCostAndUsage`, `ce:GetCostForecast`, `ec2:Describe*`(인스턴스·볼륨·스팟 가격), `elasticloadbalancing:Describe*`. `autoscaling:*`·`route53:*`·`s3:*`는 쓰지 않는다
 - **쿠버네티스**: pods, nodes, namespaces, events, pvc, services, deployments, statefulsets, daemonsets, ingresses, pdb, hpa, metrics — get/list/watch. **secrets는 제외**
+
+### 대시보드용 kubeconfig (클러스터 밖에서 실행할 때)
+
+> ⚠️ **이 절차는 kOps 문서와 `docs/specs/kops-support.md` 3.6을 근거로 쓴 것이고, 실제 kOps 클러스터에서 실행해 확인하지 않았다.** API 서버 주소(`https://api.<클러스터 이름>`)는 **추정**이다(3번의 `kubectl config view`로 실제 값을 꺼내는 쪽이 확실하다).
+
+> **`kops export kubeconfig --admin`으로 만든 kubeconfig를 마운트하지 마세요.**
+> 그 파일에는 **cluster-admin 인증서**가 들어 있어 "조회 전용"이 코드 규율로만 지켜지고 권한으로는 전혀 막히지 않는다.
+> 대시보드는 `deploy/rbac.yaml`의 ServiceAccount `sentinel-api` 토큰만 담은 kubeconfig를 **읽기 전용**으로 마운트한다.
+
+1. RBAC를 적용한다: `kubectl apply -f deploy/rbac.yaml`
+2. 토큰을 발급한다(사람이 `kubectl`로. 대시보드는 secrets를 읽지 않고 토큰을 스스로 발급·갱신하지 않는다):
+   ```bash
+   kubectl -n sentinel create token sentinel-api --duration=8760h > /tmp/sa.token
+   ```
+3. API 서버 주소와 CA 인증서를 kubeconfig에 담는다(클라이언트 인증서는 넣지 않는다). kOps는 보통 `https://api.<클러스터 이름>`이지만(**확인 필요**), 아래처럼 실제 값을 꺼내는 쪽이 확실하다.
+   ```bash
+   kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}'
+   kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'
+   ```
+   위 두 값 + 토큰으로 `~/.kube/sentinel.config`를 만들고 `KUBECONFIG_HOST_PATH=~/.kube/sentinel.config`로 마운트한다.
+4. **쓰기 권한이 없는지 확인한다** (권장 검증):
+   ```bash
+   KUBECONFIG=~/.kube/sentinel.config kubectl auth can-i --list
+   ```
+   결과에 `create`·`update`·`patch`·`delete`와 `secrets`가 **없어야 한다**. 있으면 admin kubeconfig를 쓴 것이다.
+   (이 확인은 실제 클러스터가 있어야 할 수 있다 — 저장소에는 아직 검증 기록이 없다.)
+
+- 토큰이 만료되면 대시보드는 죽지 않고 `kube` 출처를 `unavailable` + `KUBE_AUTH_FAILED`("인증 실패 — 토큰이 만료됐을 수 있습니다")로 표시한다. **mock 데이터로 대체하지 않는다.** 그때는 2번을 다시 실행한다.
+- 클러스터 **안**에 배포할 때(`deploy/app.example.yaml`)는 `serviceAccountName: sentinel-api` + in-cluster 설정을 쓰므로 kubeconfig가 필요 없다.
 
 ## 테스트
 
 ```bash
-npm test --prefix apps/api              # 398
+npm test --prefix apps/api              # 452
 npm test --prefix apps/web              # 455
 npm test --prefix deploy/aws-snapshot   # 105
 npm test --prefix deploy/k8s-snapshot   # 65

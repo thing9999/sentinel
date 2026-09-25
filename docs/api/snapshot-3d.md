@@ -81,7 +81,7 @@ Accept: application/json
     "builtAt": "2026-09-20T04:09:58.120Z",
     "rulesVersion": 1,
     "snapshotStatus": { "status": "ok", "reasons": [], "updatedAt": "…", "statusChangedAt": "…", "stale": false },
-    "cluster": { "id": "7d0c2b1e-3f4a-4c5b-8d6e-9f0a1b2c3d4e", "context": "sentinel-snapshot", "name": "prod-eks", "relation": "same" },
+    "cluster": { "id": "7d0c2b1e-3f4a-4c5b-8d6e-9f0a1b2c3d4e", "context": "sentinel-snapshot", "name": "prod.k8s.example.com", "relation": "same" },
 
     "summary": {
       "plates": 5,
@@ -794,7 +794,7 @@ interface GraphSummary {
 
 | 예시 | 보강 | AC |
 |---|---|---|
-| **K-9** `20260919-020000` (staging-eks) | ① `prod/deployments/worker.yaml`에 `envFrom: [{ configMapRef: { name: worker-config } }]` — 대상 파일 **없음** → 유령 `not_in_snapshot` ② 새 파일 `prod/services/api-legacy.yaml`(셀렉터 `app: api-legacy`, 맞는 워크로드 없음) → `notes: no_target`, 선 없음 ③ 새 파일 `data/services/pg-external.yaml`(`spec.selector` 없음) → `notes: selector_missing`, 선 없음 | AC-3D26 |
+| **K-9** `20260919-020000` (staging.k8s.example.com) | ① `prod/deployments/worker.yaml`에 `envFrom: [{ configMapRef: { name: worker-config } }]` — 대상 파일 **없음** → 유령 `not_in_snapshot` ② 새 파일 `prod/services/api-legacy.yaml`(셀렉터 `app: api-legacy`, 맞는 워크로드 없음) → `notes: no_target`, 선 없음 ③ 새 파일 `data/services/pg-external.yaml`(`spec.selector` 없음) → `notes: selector_missing`, 선 없음 | AC-3D26 |
 | **K-7** `20260915-101010` | 새 파일 `batch/configmaps/report-settings.yaml`에 ConfigMap 문서 **2개**(`report-settings`, `report-schedule`) → 블록 2개·같은 파일로 이동(`file.line`은 문서마다 다름), 파일 상태 사유 `MULTI_DOCUMENT_FILE` 추가(상태는 그대로 `warning`) | AC-3D31 |
 
 - K-9는 **다른 클러스터**라 드리프트를 계산하지 않는다 → 다른 예시의 드리프트 건수에 영향 없음(명세 3.10 의도).
@@ -827,7 +827,7 @@ interface GraphSummary {
 | NetworkPolicy | 1 | 빈 셀렉터 |
 | **합계** | **50** | 기본 켬 선 ≈ 98개/판 |
 
-- 클러스터 ID는 **대시보드 클러스터와 다른 값**(이름 `bench-eks`) → 드리프트 `CLUSTER_MISMATCH`(계산 안 함). 이유: 자동 대상이 바뀌어 기본 예시 동작이 흔들리지 않게, mock에서 1,000개 리소스를 반복 비교하지 않게.
+- 클러스터 ID는 **대시보드 클러스터와 다른 값**(이름 `bench.k8s.example.com`) → 드리프트 `CLUSTER_MISMATCH`(계산 안 함). 이유: 자동 대상이 바뀌어 기본 예시 동작이 흔들리지 않게, mock에서 1,000개 리소스를 반복 비교하지 않게.
 - 스캔 발견 0건, 파일 상태 `ok`, 휴지통 0개. 비밀값 문자열을 넣지 않는다.
 
 ### 12.5 mock 시나리오 그룹 (`common.md` 6.1 추가)
@@ -949,6 +949,9 @@ interface GraphSummary {
 ---
 
 ## 19. 변경 이력
+- 2026-09-24 (kops-support 계약, backend 3단계): mock 클러스터 이름만 정리. **응답·엔드포인트·그래프 스키마 변경 없음.**
+  - `prod-eks` → `prod.k8s.example.com`, `staging-eks` → `staging.k8s.example.com`, `bench-eks` → `bench.k8s.example.com`. 클러스터 ID 짝(K-9 = staging, 12.4 대규모 예시 = bench)은 `k8s-snapshot.md` 14절과 그대로 일치한다.
+  - 2~4단계(AWS 구성도)의 `AWS::EKS::Cluster`·`AWS::EKS::Nodegroup` 처리는 **이번에 고치지 않는다**(그 단계는 보류 상태). 그 단계를 시작할 때 **ASG / Launch Template 중심으로 다시 설계해야 한다**(kOps에는 EKS 타입이 없다).
 
 - 2026-09-20: 최초 작성 (backend, 4단계 계약. 1단계 = K8s 구성도·드리프트만. 구현 전)
 - 2026-09-20: designer 설계(`docs/design/snapshot-3d.md` 14절) 반영 — 이름을 화면 개념에 맞춤(`plates`/`blocks`/`edges[].rule`/`certainty: estimated`/`notes[]`/`summary{}`), `blocks[]` 배열 = 배치 순서 명시, `file.line`(문서 시작 줄)·`markers.scan.firstLine`·`navigate.line` 추가, `namespace.yaml`을 판으로(블록 아님) 정리.

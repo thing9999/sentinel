@@ -31,6 +31,8 @@ export interface PrecheckThresholds {
   dbXidAge: number;
   dbPvcUsageWarnPct: number;
   dbPvcUsageCritPct: number;
+  /** 컨트롤 플레인 구성요소 24시간 재시작 (R-CP-RESTART) */
+  controlPlaneRestarts24h: number;
 }
 
 export const DEFAULT_PRECHECK_THRESHOLDS: PrecheckThresholds = {
@@ -43,13 +45,14 @@ export const DEFAULT_PRECHECK_THRESHOLDS: PrecheckThresholds = {
   dbXidAge: 500_000_000,
   dbPvcUsageWarnPct: 75,
   dbPvcUsageCritPct: 90,
+  controlPlaneRestarts24h: 5,
 };
 
+/** env SYSTEM_NAMESPACES 기본값과 같다 (kOps 기준. EKS 관측 애드온 제거) */
 export const DEFAULT_SYSTEM_NAMESPACES: readonly string[] = [
   'kube-system',
   'kube-public',
   'kube-node-lease',
-  'amazon-cloudwatch',
 ];
 
 export const HOURS_PER_MONTH = 730;
@@ -120,9 +123,17 @@ export const RULES: Record<string, RuleDef> = {
       'x86 인스턴스보다 같은 크기 Graviton이 더 저렴 (이미지 arm64 지원 확인 필요)',
     category: 'cost',
   },
-  'R-EKSVER': {
-    title: 'EKS 버전이 확장 지원 구간 (컨트롤 플레인 단가 상승)',
-    category: 'cost',
+  'R-CP-HA': {
+    title: '마스터가 1대뿐 (마스터 장애 = 클러스터 정지)',
+    category: 'reliability',
+  },
+  'R-CP-SPOT': {
+    title: '마스터가 스팟 인스턴스 (회수되면 etcd 멤버가 사라진다)',
+    category: 'reliability',
+  },
+  'R-CP-RESTART': {
+    title: '컨트롤 플레인 구성요소가 최근 24시간 5회 이상 재시작',
+    category: 'reliability',
   },
   'R-PRIV': {
     title: 'privileged 컨테이너 또는 allowPrivilegeEscalation 미차단',
@@ -609,11 +620,14 @@ export function computePrechecks(
   }
 
   // --- R-NODEIDLE (관측 필요) ---
-  if (sources.cluster && nodes.length > 0) {
+  // 마스터는 대상이 아니다 (AC-KOPS16). 컨트롤 플레인은 원래 워크로드를 받지 않으므로
+  // requests 비율이 낮은 것이 정상이고, 지적하면 항상 오탐이 된다.
+  const workerNodes = nodes.filter((n) => n.role !== 'control_plane');
+  if (sources.cluster && workerNodes.length > 0) {
     if (obsSec < minObsSec) {
       items.push(heldItem('R-NODEIDLE', obsSec, minObsSec));
     } else {
-      const idle = nodes.filter(
+      const idle = workerNodes.filter(
         (n) =>
           n.cpu.requestsPct < t.nodeIdleRequestsPct &&
           n.memory.requestsPct < t.nodeIdleRequestsPct,
@@ -669,13 +683,20 @@ export function computePrechecks(
     }
   }
 
-  // R-GP2: 스토리지는 클러스터 출처, 절감액은 비용 단가가 있을 때만
+  // R-GP2: 스토리지는 클러스터 출처, 절감액은 비용 단가가 있을 때만.
+  // etcd·마스터 루트 볼륨은 PVC가 아니라 storage[]에 없으므로 따로 합친다 (AC-KOPS42).
+  // **etcd 전용 규칙(R-ETCD-VOL)은 만들지 않는다** — 같은 규칙 안에서 표시만 구분한다.
+  const cpGp2 = (snap.controlPlaneVolumes ?? []).filter(
+    (v) => v.volumeType === 'gp2',
+  );
   const gp2 = storage.filter((s) => s.volumeType === 'gp2');
-  if (gp2.length > 0) {
+  if (gp2.length > 0 || cpGp2.length > 0) {
     const g2 = cost?.ebsGbMonth.gp2 ?? null;
     const g3 = cost?.ebsGbMonth.gp3 ?? null;
     let savings: Savings | null = null;
-    const totalGb = gp2.reduce((s, v) => s + (v.capacityBytes ?? 0) / GIB, 0);
+    const totalGb =
+      gp2.reduce((s, v) => s + (v.capacityBytes ?? 0) / GIB, 0) +
+      cpGp2.reduce((s, v) => s + v.capacityBytes / GIB, 0);
     if (g2 !== null && g3 !== null && g2 > g3 && totalGb > 0) {
       const monthly = round2((g2 - g3) * totalGb);
       savings = {
@@ -690,21 +711,42 @@ export function computePrechecks(
       item({
         ruleId: 'R-GP2',
         severity: 'low',
-        summary: `gp2 EBS 볼륨 ${gp2.length}개`,
+        summary: `gp2 EBS 볼륨 ${gp2.length + cpGp2.length}개${
+          cpGp2.some((v) => v.kind === 'etcd') ? ' (etcd 볼륨 포함)' : ''
+        }`,
         evidenceText:
-          g2 !== null && g3 !== null && g2 > 0
+          (g2 !== null && g3 !== null && g2 > 0
             ? `gp3 전환 시 GB 단가 −${Math.round(((g2 - g3) / g2) * 100)}%`
-            : 'gp3 전환 시 GB 단가가 더 낮음',
-        hits: gp2.map((s) => ({
-          target: makeTarget('PersistentVolumeClaim', s.namespace, s.name),
-          evidence: [
-            ev(
-              `storage[${s.namespace}/${s.name}].volumeType`,
-              'gp2',
-              `볼륨 타입 gp2${s.capacityBytes ? ` · ${round2(s.capacityBytes / GIB)} GiB` : ''}`,
-            ),
-          ],
-        })),
+            : 'gp3 전환 시 GB 단가가 더 낮음') +
+          (cpGp2.some((v) => v.kind === 'etcd')
+            ? ' · etcd는 IOPS 민감 — 전환 시 성능 확인 필요'
+            : ''),
+        hits: [
+          ...gp2.map((s) => ({
+            target: makeTarget('PersistentVolumeClaim', s.namespace, s.name),
+            evidence: [
+              ev(
+                `storage[${s.namespace}/${s.name}].volumeType`,
+                'gp2',
+                `볼륨 타입 gp2${s.capacityBytes ? ` · ${round2(s.capacityBytes / GIB)} GiB` : ''}`,
+              ),
+            ],
+          })),
+          ...cpGp2.map((v) => ({
+            target: makeTarget('Other', null, v.volumeRef, v.volumeRef),
+            evidence: [
+              ev(
+                `controlPlaneVolumes[${v.volumeRef}].volumeType`,
+                'gp2',
+                `${v.kind === 'etcd' ? 'etcd 볼륨' : '마스터 루트 볼륨'} ${v.volumeRef} gp2 · ${round2(v.capacityBytes / GIB)} GiB${
+                  v.kind === 'etcd'
+                    ? ' (IOPS 민감 — 전환 시 성능 확인 필요)'
+                    : ''
+                }`,
+              ),
+            ],
+          })),
+        ],
         savings,
       }),
     );
@@ -891,25 +933,72 @@ export function computePrechecks(
     }
   }
 
-  if (sources.cluster && snap.cluster.supportTier === 'extended') {
-    items.push(
-      item({
-        ruleId: 'R-EKSVER',
-        severity: 'high',
-        summary: `EKS ${snap.cluster.version} 확장 지원 구간`,
-        evidenceText: '확장 지원 구간은 컨트롤 플레인 시간당 단가가 올라감',
-        hits: [
-          {
-            target: makeTarget('Cluster', null, 'cluster'),
+  // --- 컨트롤 플레인 (kops-support 3.7.2 1단계. 2단계 R-CP-EVEN·AZ·UNDERSIZE는 범위 밖) ---
+  const masters = nodes.filter((n) => n.role === 'control_plane');
+  if (sources.cluster && masters.length > 0) {
+    // R-CP-HA: 설정(CONTROL_PLANE_HA_EXPECTED)과 무관하게 항상 지적한다 (명세 3.2.1)
+    if (masters.length === 1) {
+      items.push(
+        item({
+          ruleId: 'R-CP-HA',
+          severity: 'high',
+          summary: '마스터 1대 (HA 아님)',
+          evidenceText:
+            '마스터가 1대면 그 노드가 죽는 순간 클러스터가 멈춘다 (etcd 쿼럼 상실)',
+          hits: [
+            {
+              target: makeTarget('Cluster', null, 'cluster'),
+              evidence: [ev('cluster.controlPlaneCount', 1, '마스터 노드 1대')],
+            },
+          ],
+        }),
+      );
+    }
+    // R-CP-SPOT: 마스터가 스팟
+    const spotMasters = masters.filter((n) => n.capacityType === 'spot');
+    if (spotMasters.length > 0) {
+      items.push(
+        item({
+          ruleId: 'R-CP-SPOT',
+          severity: 'high',
+          summary: `스팟 마스터 ${spotMasters.length}대`,
+          evidenceText:
+            '스팟은 언제든 회수될 수 있다 — 마스터가 사라지면 etcd 멤버가 함께 사라진다',
+          hits: spotMasters.map((n) => ({
+            target: makeTarget('Node', null, n.name, nodeReal(n.name)),
             evidence: [
               ev(
-                'cluster.supportTier',
-                'extended',
-                `EKS ${snap.cluster.version} 확장 지원`,
+                `nodes[${n.name}].capacityType`,
+                'spot',
+                `${n.name} (${n.instanceType ?? '타입 미상'}) 스팟`,
               ),
             ],
-          },
-        ],
+          })),
+        }),
+      );
+    }
+  }
+  // R-CP-RESTART: 구성요소 24시간 재시작 (기존 R-RESTART는 시스템 네임스페이스를 제외한다)
+  const cpRestarts = (snap.cluster.controlPlane?.components ?? []).filter(
+    (c) => c.restarts24h >= t.controlPlaneRestarts24h,
+  );
+  if (sources.cluster && cpRestarts.length > 0) {
+    items.push(
+      item({
+        ruleId: 'R-CP-RESTART',
+        severity: 'high',
+        summary: `컨트롤 플레인 구성요소 재시작 ${cpRestarts.length}종`,
+        evidenceText: `최근 24시간 ${t.controlPlaneRestarts24h}회 이상 재시작`,
+        hits: cpRestarts.map((c) => ({
+          target: makeTarget('Cluster', null, c.kind),
+          evidence: [
+            ev(
+              `cluster.controlPlane.components[${c.kind}].restarts24h`,
+              c.restarts24h,
+              `${c.kind} 최근 24시간 재시작 ${c.restarts24h}회`,
+            ),
+          ],
+        })),
       }),
     );
   }

@@ -148,7 +148,7 @@ function renderWith(ui: ReactNode, summary: SnapshotSummary | null = snapshotSum
 describe("목록 /snapshots", () => {
   it("요약 띠·행·MOCK 안내, crit 는 `커밋 금지`, 내보내기·적용 버튼 없음 (AC-01·05·07·21)", async () => {
     renderWith(<SnapshotListPage />);
-    await screen.findByText("EKS 1.30 업그레이드 전");
+    await screen.findByText("kOps 1.31 업그레이드 전");
     // k8s-snapshot 이후 목록 머리는 `스냅샷` + AWS / Kubernetes 탭(현재 AWS, AC-K17)
     expect(screen.getByRole("heading", { level: 1, name: "스냅샷" })).toBeTruthy();
     const tabs = screen.getByRole("navigation", { name: "스냅샷 종류" });
@@ -179,7 +179,7 @@ describe("목록 /snapshots", () => {
     searchParams = new URLSearchParams("q=업그레이드");
     renderWith(<SnapshotListPage />);
     await screen.findByText("스냅샷 4개 중 1개 표시");
-    expect(screen.getByText("EKS 1.30 업그레이드 전")).toBeTruthy();
+    expect(screen.getByText("kOps 1.31 업그레이드 전")).toBeTruthy();
   });
 
   it("스냅샷 0개면 빈 상태 + CLI 안내(복사, 실행 수단 없음) (AC-51)", async () => {
@@ -214,7 +214,7 @@ describe("목록 /snapshots", () => {
     const items = listResponse().items.map((it) => ({ ...it, actions: { editTemplates: ro, editNotes: ro, delete: ro } }));
     handler = (c) => (c.path === "/aws-snapshots" ? listResponse({ items, summary: snapshotSummary({ writable: ro }) }) : defaultHandler(c));
     renderWith(<SnapshotListPage />, snapshotSummary({ writable: ro }));
-    await screen.findByText("EKS 1.30 업그레이드 전");
+    await screen.findByText("kOps 1.31 업그레이드 전");
     expect(screen.getAllByText("스냅샷 폴더가 읽기 전용입니다").length).toBeGreaterThan(0);
     const btns = screen.getAllByRole("button", { name: "라벨·메모 편집" });
     expect(btns.length).toBe(4);
@@ -224,7 +224,7 @@ describe("목록 /snapshots", () => {
   it("새로고침은 POST refresh 에 JSON 본문 {}", async () => {
     handler = (c) => (c.path === "/aws-snapshots/refresh" ? { dataSource: "mock", generatedAt: "", revision: 2, summary: snapshotSummary() } : defaultHandler(c));
     renderWith(<SnapshotListPage />);
-    await screen.findByText("EKS 1.30 업그레이드 전");
+    await screen.findByText("kOps 1.31 업그레이드 전");
     fireEvent.click(screen.getByRole("button", { name: "지금 다시 읽기" }));
     await waitFor(() => expect(calls.some((c) => c.path === "/aws-snapshots/refresh")).toBe(true));
     const c = calls.find((x) => x.path === "/aws-snapshots/refresh")!;
@@ -236,7 +236,7 @@ describe("목록 /snapshots", () => {
     const secret = await httpError(422, "SNAPSHOT_NOTES_SECRET_DETECTED", { fields: ["memo"], rules: ["url-credentials"] });
     handler = (c) => (c.path === "/aws-snapshots/20260919-031500/notes" ? secret : defaultHandler(c));
     renderWith(<SnapshotListPage />);
-    await screen.findByText("EKS 1.30 업그레이드 전");
+    await screen.findByText("kOps 1.31 업그레이드 전");
     const row = screen.getByText("비밀값 의심 2건 (env-block, url-credentials)").closest("tr")!;
     fireEvent.click(within(row).getByRole("button", { name: "라벨·메모 편집" }));
     const memo = await screen.findByRole("textbox", { name: /메모/ });

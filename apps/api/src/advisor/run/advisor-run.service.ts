@@ -60,7 +60,7 @@ import {
   type RunRecord,
 } from './run-model';
 
-export const PROMPT_VERSION = 'advisor-v1';
+export const PROMPT_VERSION = 'advisor-v2';
 const PROGRESS_EVERY_MS = 5_000;
 const RECEIVING_THROTTLE_MS = 1_000;
 const FAST_TIMERS = { slowAfterSec: 10, timeoutSec: 20 };

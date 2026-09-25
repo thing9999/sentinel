@@ -76,6 +76,7 @@ export function mockClusterContribution(): ClusterContribution {
   ) => ({
     name,
     nodeGroup,
+    role: 'worker' as const,
     instanceType,
     architecture: 'amd64',
     capacityType,
@@ -101,11 +102,40 @@ export function mockClusterContribution(): ClusterContribution {
   });
   return {
     cluster: {
-      platform: 'eks',
+      platform: 'kops',
       version: '1.34',
       region: 'ap-northeast-2',
-      supportTier: 'standard',
-      nodeCount: 6,
+      workerCount: 6,
+      controlPlaneCount: 3,
+      controlPlane: {
+        masters: {
+          readyCount: 3,
+          instanceTypes: [{ type: 't3.medium', count: 3 }],
+          zones: [
+            { zone: 'ap-northeast-2a', count: 1 },
+            { zone: 'ap-northeast-2b', count: 1 },
+            { zone: 'ap-northeast-2c', count: 1 },
+          ],
+          capacityType: 'on_demand' as const,
+          cpu: { avgPct: 31, maxPct: 44, requestsPct: 29 },
+          memory: { avgPct: 48, maxPct: 57, requestsPct: 23 },
+        },
+        components: [
+          'kube-apiserver',
+          'kube-controller-manager',
+          'kube-scheduler',
+          'etcd-manager-main',
+          'etcd-manager-events',
+        ].map((kind) => ({
+          kind: kind as 'kube-apiserver',
+          readyCount: 3,
+          expectedCount: 3,
+          restarts24h: 0,
+        })),
+        quorumState: 'ok' as const,
+        haExpected: true,
+        notReporting: 0,
+      },
       namespaceCount: 7,
     },
     observationSec: { metrics: 3600, restarts: 86_400 },
@@ -328,8 +358,7 @@ export function mockClusterContribution(): ClusterContribution {
         containers: [
           container({
             name: 'coredns',
-            image:
-              '602401143452.dkr.ecr.ap-northeast-2.amazonaws.com/eks/coredns:v1.11.1',
+            image: 'registry.k8s.io/coredns/coredns:v1.11.1',
           }),
         ],
       }),
@@ -419,7 +448,7 @@ export function mockCostContribution(now: Date): CostContribution {
           { category: 'ebs', usdPerHour: 0.0203 },
           { category: 'lb', usdPerHour: 0.0555 },
           { category: 'ipv4', usdPerHour: 0.0565 },
-          { category: 'eks', usdPerHour: 0.1 },
+          { category: 'controlPlane', usdPerHour: 0.232 },
         ],
         byNodeGroup: [
           { nodeGroup: 'general', usdPerHour: 0.384, usdPerMonth: 280.32 },

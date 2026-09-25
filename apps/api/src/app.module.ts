@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AdvisorModule } from './advisor/advisor.module';
+import { AlertsModule } from './alerts/alerts.module';
 import { AwsSnapshotsModule } from './aws-snapshots/aws-snapshots.module';
 import { ClusterModule } from './cluster/cluster.module';
 import { CommonModule } from './common/common.module';
@@ -11,6 +12,7 @@ import { PrismaModule } from './database/prisma.module';
 import { DbHealthModule } from './db-health/db-health.module';
 import { HealthModule } from './health/health.module';
 import { K8sSnapshotsModule } from './k8s-snapshots/k8s-snapshots.module';
+import { LogsModule } from './logs/logs.module';
 import { SnapshotMenuModule } from './snapshot-menu/snapshot-menu.module';
 import { StreamModule } from './stream/stream.module';
 
@@ -35,6 +37,8 @@ import { StreamModule } from './stream/stream.module';
     AwsSnapshotsModule,
     K8sSnapshotsModule,
     SnapshotMenuModule,
+    LogsModule,
+    AlertsModule,
   ],
 })
 export class AppModule {}

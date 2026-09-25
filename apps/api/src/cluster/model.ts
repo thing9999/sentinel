@@ -20,13 +20,18 @@ export interface ResourceAmountsRaw {
   memoryBytes: number | null;
 }
 
+export type NodeRole = 'worker' | 'control_plane';
+
 export interface RawNode {
   name: string;
   createdAt: string;
   instanceType: string | null;
   zone: string | null;
   region: string | null;
+  /** kOps InstanceGroup 이름 (라벨 kops.k8s.io/instancegroup) */
   nodeGroup: string | null;
+  /** 라벨 node-role.kubernetes.io/control-plane (또는 구 …/master) 이 있으면 control_plane */
+  role: NodeRole;
   capacityType: 'on_demand' | 'spot' | null;
   architecture: string | null;
   kubeletVersion: string;

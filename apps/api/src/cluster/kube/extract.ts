@@ -88,12 +88,25 @@ function selector(sel: V1LabelSelector | undefined): LabelSelectorRaw | null {
 // Node
 // ---------------------------------------------------------------------------
 
+/** 마스터 판별 라벨. 구 `…/master`도 인정한다 (kops-support 3.1 / F8) */
+const CONTROL_PLANE_LABELS = [
+  'node-role.kubernetes.io/control-plane',
+  'node-role.kubernetes.io/master',
+] as const;
+
+export function nodeRoleOf(
+  labels: Record<string, string>,
+): 'worker' | 'control_plane' {
+  return CONTROL_PLANE_LABELS.some((k) => k in labels)
+    ? 'control_plane'
+    : 'worker';
+}
+
 export function extractNode(n: V1Node): RawNode {
   const labels = n.metadata?.labels ?? {};
-  const capType =
-    labels['eks.amazonaws.com/capacityType'] ??
-    labels['karpenter.sh/capacity-type'] ??
-    null;
+  // kOps는 구매 옵션 라벨을 붙이지 않는다. 쿠버네티스 표준 라벨만 본다
+  // (비용 쪽은 EC2 InstanceLifecycle을 1순위로 쓴다 — kops-support 3.3)
+  const capType = labels['node.kubernetes.io/instance-lifecycle'] ?? null;
   const capacityType =
     capType === null
       ? null
@@ -119,11 +132,9 @@ export function extractNode(n: V1Node): RawNode {
       labels['topology.kubernetes.io/region'] ??
       labels['failure-domain.beta.kubernetes.io/region'] ??
       null,
-    nodeGroup:
-      labels['eks.amazonaws.com/nodegroup'] ??
-      labels['karpenter.sh/nodepool'] ??
-      labels['alpha.eksctl.io/nodegroup-name'] ??
-      null,
+    // kOps InstanceGroup 이름 (F1). 하위 호환 키는 두지 않는다 (D1·AC-KOPS03)
+    nodeGroup: labels['kops.k8s.io/instancegroup'] ?? null,
+    role: nodeRoleOf(labels),
     capacityType,
     architecture: labels['kubernetes.io/arch'] ?? null,
     kubeletVersion: n.status?.nodeInfo?.kubeletVersion ?? '',

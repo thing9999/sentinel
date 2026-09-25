@@ -1,0 +1,380 @@
+/*
+ * 알림 목록 (components.md 20.1·20.2, alerts.md 4·5절, status.md 12절).
+ * 새 토큰 없음 — 상태 4단계 + 중립색 + mode.mock* 만 쓴다.
+ */
+
+/* ───── AlertItem ───── */
+.item {
+  position: relative;
+  min-width: 0;
+  border-bottom: var(--border-width-thin) solid var(--color-border-subtle);
+  background: var(--color-bg-surface);
+}
+
+.item:hover {
+  background: var(--color-bg-hover);
+}
+
+.itemExpanded {
+  background: var(--color-bg-selected);
+}
+
+/* critical 만 왼쪽 3px 막대(status.md 5.1 재사용). 주의 이하는 막대 없음 */
+.itemCrit::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--border-width-accent);
+  background: var(--color-status-crit-solid);
+}
+
+.itemMain {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  min-height: 76px;
+  min-width: 0;
+  padding: var(--spacing-3) var(--spacing-4) var(--spacing-3) var(--spacing-3);
+}
+
+/* 읽음 gutter 20px: 안 읽음 점 8px(hit 32px) */
+.gutter {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  flex: 0 0 var(--spacing-5);
+  height: var(--spacing-5);
+}
+
+.unreadDot,
+.unreadDotStatic {
+  position: relative;
+  display: block;
+  width: var(--spacing-2);
+  height: var(--spacing-2);
+  margin-top: var(--spacing-2);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-default);
+}
+
+.unreadDot {
+  z-index: 1;
+  cursor: pointer;
+}
+
+/* 최소 클릭 영역 32 × 32px (점 자체는 8px) */
+.unreadDot::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.row1 {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-height: var(--spacing-6);
+  min-width: 0;
+}
+
+/*
+ * 항목 전체 클릭 영역은 이 링크의 ::after 가 덮는다.
+ * 항목을 버튼으로 감싸고 안에 버튼을 넣는 구조(중첩 금지)를 피하기 위한 장치다(alerts.md 9절).
+ */
+.titleLink {
+  display: inline-flex;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.titleLink::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.titleInner {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.area {
+  font: var(--font-body-strong);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 읽음: 영역 이름의 무게만 낮춘다. 배지·사유·칩은 그대로 */
+.areaRead {
+  font: var(--font-body);
+  color: var(--color-text-secondary);
+}
+
+.chips {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1-5);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.moreChips {
+  position: relative;
+  z-index: 1;
+  font: var(--font-micro);
+  color: var(--color-text-tertiary);
+  border-radius: var(--radius-xs);
+}
+
+.time {
+  margin-left: auto;
+  flex-shrink: 0;
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+  font-variant-numeric: var(--font-numeric);
+}
+
+.duration {
+  color: var(--color-text-tertiary);
+}
+
+.row2 {
+  min-width: 0;
+}
+
+.row3 {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.targets {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.target {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.targetKind {
+  flex-shrink: 0;
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+.targetsMore {
+  flex-shrink: 0;
+  font: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+.row3Right {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1-5);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.logLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-height: var(--size-badge-sm);
+  padding: 0 var(--spacing-1);
+  border-radius: var(--radius-sm);
+  font: var(--font-caption);
+  color: var(--color-text-link);
+  text-decoration: none;
+}
+
+.logLink:hover {
+  text-decoration: underline;
+}
+
+.expandButton {
+  flex-shrink: 0;
+}
+
+/* 확장 영역: 배경 bg.surfaceSunken, 패딩 12px 16px, 위 1px border.subtle */
+.expansion {
+  padding: var(--spacing-3) var(--spacing-4);
+  border-top: var(--border-width-thin) solid var(--color-border-subtle);
+  background: var(--color-bg-surface-sunken);
+}
+
+/*
+ * 좁은 폭(alerts.md 8절): 4줄 배치 ① 배지 + 영역 ② 시각 + 칩 ③ 사유 ④ 대상.
+ * 360px(본문 가용 폭 328px)에서 가로 스크롤이 생기지 않는다 — 표가 아니라 목록이라서 열 예산이 없다.
+ */
+@media (max-width: 639px) {
+  .itemMain {
+    min-height: 112px;
+    padding: var(--spacing-3) var(--spacing-3) var(--spacing-3) var(--spacing-2);
+  }
+
+  /* 1행 = 배지 + 영역 / 2행 = 시각 + 칩 (alerts.md 8절 순서) */
+  .row1 {
+    flex-wrap: wrap;
+    row-gap: var(--spacing-1);
+  }
+
+  .titleLink,
+  .titleInner {
+    flex-basis: 100%;
+  }
+
+  .time {
+    order: 1;
+    margin-left: 0;
+  }
+
+  .chips {
+    order: 2;
+    flex-wrap: wrap;
+  }
+
+  /* ③ 사유: 좁은 폭에서는 2줄 말줄임(alerts.md 8절). `.row2 .reason` 두 클래스라 ReasonText 의 1줄 규칙보다 앞선다 */
+  .row2 .reason {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  /*
+   * ④ 대상 + 발송 칩 + `로그` (alerts.md 8절, components.md 20.1).
+   * **대상 이름 칸이 128px 아래로 줄면 발송 칩과 `로그`를 다음 줄로 내린다**(오른쪽 정렬, 위 4px).
+   * 128px = 가운데 말줄임에서 끝 16자(mono 12 약 7.2px × 16) + `…`가 남는 최소 폭(status.md 5.3).
+   *
+   * 줄바꿈 판정은 flex 항목의 "가상 크기"로 한다. `.targets` 의 기준 크기를 128px로 두면
+   * `128 + 간격 + 오른쪽 묶음 > 줄 폭`일 때 오른쪽 묶음이 **통째로** 다음 줄로 간다.
+   * 같은 줄에 있을 때는 `.targets` 가 남는 폭을 모두 채우므로(grow) 128px 아래로 줄지 않는다.
+   */
+  .row3 {
+    flex-wrap: wrap;
+    row-gap: var(--spacing-1);
+  }
+
+  .targets {
+    flex: 1 1 128px;
+  }
+
+  /*
+   * 오른쪽 묶음: 다음 줄로 내려가도 오른쪽 정렬(margin-left: auto). 칩 문구는 **말줄임하지 않는다** —
+   * `발송 멈춤(연…`처럼 이유가 잘리면 칩의 뜻이 사라진다. 그래서 칩을 줄이지 않고(`> * { flex-shrink: 0 }`),
+   * 묶음이 줄 폭보다 넓어지는 극단(칩 여러 개)에서는 묶음 **안에서** 줄을 바꾼다(가로 스크롤을 만들지 않는다).
+   */
+  .row3Right {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: var(--spacing-1);
+    max-width: 100%;
+    margin-left: auto;
+  }
+
+  .row3Right > * {
+    flex-shrink: 0;
+  }
+}
+
+/* ───── AlertGapRow ───── */
+/*
+ * status.md 12.4. 높이 32px, radius 4px, status.unknown.bg + 45° 빗금(1px unknown.border, 간격 6px).
+ * 빗금은 "관측하지 않은 구간"을 흑백에서도 가르는 단서라 장식이 아니다.
+ */
+.gap {
+  display: flex;
+  align-items: center;
+  min-height: var(--spacing-8);
+  margin: var(--spacing-2) 0;
+  padding: 0 var(--spacing-3);
+  border: var(--border-width-thin) solid var(--color-status-unknown-border);
+  border-radius: var(--radius-sm);
+  background:
+    repeating-linear-gradient(
+      var(--chart-hatch-angle),
+      var(--color-status-unknown-border) 0 var(--chart-hatch-line-width),
+      transparent var(--chart-hatch-line-width) calc(var(--chart-hatch-line-width) + var(--spacing-1-5))
+    ),
+    var(--color-status-unknown-bg);
+}
+
+.gapInner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+  flex-wrap: wrap;
+  row-gap: 0;
+  padding: var(--spacing-1) 0;
+}
+
+.gapIcon {
+  flex-shrink: 0;
+  color: var(--color-status-unknown-fg);
+}
+
+.gapRange {
+  font: var(--font-caption-strong);
+  color: var(--color-text-primary);
+  font-variant-numeric: var(--font-numeric);
+  white-space: nowrap;
+}
+
+.gapExplain {
+  font: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+/* 좁은 폭: 2줄(시각 줄 + 설명 줄), 높이 48px. **생략하지 않는다** */
+@media (max-width: 639px) {
+  .gap {
+    min-height: var(--spacing-12);
+  }
+
+  .gapExplain {
+    flex-basis: 100%;
+  }
+}
+
+/* ───── 목록 틀 ───── */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}

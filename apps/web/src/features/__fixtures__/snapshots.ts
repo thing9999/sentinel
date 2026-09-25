@@ -56,7 +56,7 @@ function item(id: string, patch: Partial<SnapshotListItem>): SnapshotListItem {
     memo: null,
     notesUpdatedAt: null,
     region: "ap-northeast-2",
-    scope: { searchFilter: "prod-eks", regexFilter: null, services: { mode: "exclude", list: ["SecretsManager", "SSM", "Lambda", "IAM"] } },
+    scope: { searchFilter: "prod.k8s.example.com", regexFilter: null, services: { mode: "exclude", list: ["SecretsManager", "SSM", "Lambda", "IAM"] } },
     resources: {
       current: { cloudformation: 42, terraform: 44 },
       atExport: { cloudformation: 42, terraform: 44 },
@@ -107,7 +107,7 @@ export const SNAP_ITEMS: SnapshotListItem[] = [
     scan: { errors: 0, warnings: 1, strict: false, passed: true, rules: ["user-data"] },
   }),
   item("20260912-020000", {
-    label: "EKS 1.30 업그레이드 전",
+    label: "kOps 1.31 업그레이드 전",
     memo: "노드그룹 m6i.large 3대 시점, 복원 기준",
     modifiedByDashboard: true,
     status: st("critical", [["TEMPLATE_MISSING", "terraform.tf 없음", "critical"]]),
@@ -202,7 +202,7 @@ export function detailData(patch: Partial<SnapshotDetailData> = {}): SnapshotDet
         snapshotIdTimezone: "UTC",
         region: "ap-northeast-2",
         profile: "snapshot-export",
-        searchFilter: "prod-eks",
+        searchFilter: "prod.k8s.example.com",
         regexFilter: null,
         services: { mode: "exclude", list: ["SecretsManager", "SSM", "Lambda"] },
         allowSensitiveServices: false,

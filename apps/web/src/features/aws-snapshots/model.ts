@@ -195,7 +195,7 @@ export function shortList(list: string[], keep = 3): string {
   return `${list.slice(0, keep).join(", ")} 외 ${list.length - keep}개`;
 }
 
-/** 범위 요약 (명세 3.1): `필터 prod-eks · 제외 SecretsManager, SSM, Lambda` / `필터 없음 · 포함 EKS, EC2, VPC 외 2개` */
+/** 범위 요약 (명세 3.1): `필터 prod.k8s.example.com · 제외 SecretsManager, SSM, Lambda` / `필터 없음 · 포함 EKS, EC2, VPC 외 2개` */
 export function scopeSummary(scope: SnapshotScope | null, full = false): string {
   if (!scope) return "—";
   const parts: string[] = [];

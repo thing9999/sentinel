@@ -22,8 +22,11 @@ export const BACKOFF = { baseMs: 3000, maxMs: 30_000, factor: 2, jitter: 0.2 } a
 /**
  * 항상 구독하는 토픽 (사이드바·상단바). `snapshot-menu`는 사이드바 "스냅샷" 메뉴 배지용
  * (docs/api/k8s-snapshot.md 12절: AWS·k8s 합산 값). `aws-snapshots`·`k8s-snapshots`는 해당 화면이 구독한다.
+ * `alerts`(alerts.md 6절)는 사이드바 `알림` 배지 + 브라우저 탭 제목용이다. **스냅샷에 이력 목록이 없고**(6.1),
+ * 리듀서도 `alerts.created`의 항목 객체를 저장하지 않는다 — 알림 화면을 열지 않은 탭이 이력을 들지 않는다(AC-ALERT37).
+ * `logs` 토픽은 **없다**: 로그는 전용 연결이고 `?topics=logs`는 400이다(logs.md 0.3).
  */
-export const BASE_TOPICS: readonly StreamTopic[] = ["overview", "snapshot-menu"];
+export const BASE_TOPICS: readonly StreamTopic[] = ["overview", "snapshot-menu", "alerts"];
 /** 서버 스냅샷 순서와 같게 (common.md 5절) */
 const TOPIC_ORDER: readonly StreamTopic[] = [
   "overview",
@@ -35,6 +38,7 @@ const TOPIC_ORDER: readonly StreamTopic[] = [
   "aws-snapshots",
   "k8s-snapshots",
   "snapshot-menu",
+  "alerts",
 ];
 
 export type ConnectionPhase =
@@ -100,6 +104,22 @@ const initialConnection: ConnectionInfo = {
   topics: [],
 };
 
+/**
+ * **서버 렌더와 하이드레이션이 보는 값** (`useSyncExternalStore`의 `getServerSnapshot`).
+ *
+ * 서버에는 SSE 가 없으므로 서버 HTML 은 언제나 이 빈 값으로 그려진다. 클라이언트도 **하이드레이션하는 동안에는**
+ * 같은 값을 봐야 트리가 일치한다. 종전에는 `getSnapshot`(살아 있는 값)을 그대로 넘겨서, 셸이 먼저 하이드레이션되고
+ * 스트림이 열려 스냅샷이 도착한 **뒤에** `<Suspense>` 안의 페이지(`/cluster/pods`·`/cluster/nodes`)가 하이드레이션되면
+ * 서버 HTML(빈 표)과 클라이언트 트리(채워진 표)가 달라 hydration 오류가 났다(alerts/frontend.md R2).
+ * 하이드레이션이 끝나면 React 가 `getSnapshot`과 다른 것을 보고 곧바로 다시 그린다 — 데이터가 늦게 보이는 일은 없다.
+ *
+ * 모듈 상수 하나다. `getServerSnapshot`은 호출마다 **같은 참조**를 돌려줘야 한다(아니면 React 가 무한 렌더 경고를 낸다).
+ */
+export const SERVER_STREAM_SNAPSHOT: StreamStore = Object.freeze({
+  stream: initialStreamState,
+  connection: initialConnection,
+});
+
 async function defaultCheckHealth(): Promise<boolean> {
   try {
     await apiFetch<HealthResponse>("/health", { timeoutMs: 3000 });
@@ -114,7 +134,7 @@ export function topicsKey(topics: readonly StreamTopic[]): string {
 }
 
 export class StreamClient {
-  private store: StreamStore = { stream: initialStreamState, connection: initialConnection };
+  private store: StreamStore = SERVER_STREAM_SNAPSHOT;
   private listeners = new Set<() => void>();
   private refs = new Map<StreamTopic, number>();
   private source: EventSourceLike | null = null;

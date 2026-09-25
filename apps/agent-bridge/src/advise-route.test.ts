@@ -114,7 +114,7 @@ describe('POST /v1/advise (NDJSON)', () => {
       remoteAddress: LOCAL,
       payload: {
         runId: RUN_ID,
-        promptVersion: 'advisor-v1',
+        promptVersion: 'advisor-v2',
         snapshot: SNAPSHOT,
       },
     });
@@ -128,7 +128,7 @@ describe('POST /v1/advise (NDJSON)', () => {
       'progress',
       'result',
     ]);
-    expect(ls[0]).toMatchObject({ runId: RUN_ID, promptVersion: 'advisor-v1' });
+    expect(ls[0]).toMatchObject({ runId: RUN_ID, promptVersion: 'advisor-v2' });
     expect(ls[3]).toMatchObject({ phase: 'receiving', receivedChars: 5 });
     expect(ls[4]).toMatchObject({
       subtype: 'success',
@@ -153,7 +153,7 @@ describe('POST /v1/advise (NDJSON)', () => {
       busy: false,
       activeRunId: null,
       claudeCodeVersion: '9.9.9',
-      promptVersion: 'advisor-v1',
+      promptVersion: 'advisor-v2',
     });
   });
 

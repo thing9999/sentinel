@@ -46,7 +46,7 @@ describe("스냅샷 ID·시각", () => {
 
 describe("목록 표시 문구", () => {
   it("범위 요약: 필터 + 서비스 앞 3개 + 외 N개", () => {
-    expect(scopeSummary(SNAP_ITEMS[1].scope)).toBe("필터 prod-eks · 제외 SecretsManager, SSM, Lambda 외 1개");
+    expect(scopeSummary(SNAP_ITEMS[1].scope)).toBe("필터 prod.k8s.example.com · 제외 SecretsManager, SSM, Lambda 외 1개");
     expect(scopeSummary({ searchFilter: null, regexFilter: null, services: { mode: "include", list: ["EKS"] } })).toBe("필터 없음 · 포함 EKS");
     expect(scopeSummary(null)).toBe("—");
   });
@@ -70,7 +70,7 @@ describe("필터·정렬 (서버 상태를 다시 계산하지 않음)", () => {
   it("상태·리전·라벨/메모 검색(대소문자 무시)", () => {
     expect(filterItems(SNAP_ITEMS, { status: ["crit"], regions: [], q: "" }).map((i) => i.id)).toEqual(["20260919-031500", "20260912-020000"]);
     expect(filterItems(SNAP_ITEMS, { status: [], regions: ["us-east-1"], q: "" }).map((i) => i.id)).toEqual(["20260918-120000"]);
-    expect(filterItems(SNAP_ITEMS, { status: [], regions: [], q: "eks 1.30" }).map((i) => i.id)).toEqual(["20260912-020000"]);
+    expect(filterItems(SNAP_ITEMS, { status: [], regions: [], q: "kops 1.31" }).map((i) => i.id)).toEqual(["20260912-020000"]);
     expect(filterItems(SNAP_ITEMS, { status: [], regions: [], q: "M6I.LARGE" }).map((i) => i.id)).toEqual(["20260912-020000"]);
   });
 

@@ -202,15 +202,15 @@ deploy/k8s-snapshot/snapshots/<YYYYMMDD-HHmmss>/      (UTC, 스냅샷 ID ^\d{8}-
     "id": "7d0c2b1e-3f4a-4c5b-8d6e-9f0a1b2c3d4e",
     "idSource": "kube-system-namespace-uid",
     "context": "sentinel-snapshot",
-    "name": "prod-eks",
-    "serverVersion": "v1.34.1-eks-8a2c1f0"
+    "name": "prod.k8s.example.com",
+    "serverVersion": "v1.34.1"
   },
   "scope": {
     "namespaces": {
       "mode": "all_except_system",
       "include": [],
       "exclude": [],
-      "system": ["kube-system", "kube-public", "kube-node-lease", "amazon-cloudwatch"],
+      "system": ["kube-system", "kube-public", "kube-node-lease"],
       "systemIncluded": []
     },
     "exported": ["batch", "data", "default", "monitoring", "prod"],
@@ -247,7 +247,7 @@ deploy/k8s-snapshot/snapshots/<YYYYMMDD-HHmmss>/      (UTC, 스냅샷 ID ^\d{8}-
 | 필드 | 규칙 |
 |---|---|
 | `cluster.id` | `kube-system` Namespace의 `metadata.uid`. 읽지 못하면 내보내기 실패(종료코드 3) — 드리프트 짝 맞추기에 필수(Q4) |
-| `cluster.name` | kubeconfig의 클러스터 항목 이름. EKS ARN(`arn:aws:eks:<region>:<acct>:cluster/<name>`)이면 마지막 부분만(계정 ID를 남기지 않음). 모르면 `null` |
+| `cluster.name` | kubeconfig의 클러스터 항목 이름. kOps는 보통 클러스터 FQDN(`prod.k8s.example.com`)이 그대로 들어간다. 이름이 ARN 형태(`arn:…:cluster/<name>`)면 마지막 부분만 남긴다(계정 ID를 남기지 않음 — 다른 도구로 만든 kubeconfig 대비). 모르면 `null` |
 | `cluster.context` | 컨텍스트 이름 원문. kubeconfig 경로·서버 URL·토큰·인증서는 **없다**(AC-K12) |
 | `scope.namespaces.mode` | `all_except_system` \| `include` \| `exclude`. `systemIncluded`는 포함 목록에 직접 적은 시스템 네임스페이스 |
 | `scope.exported` | 실제로 내보낸 네임스페이스(정렬). `missing`은 포함 목록에 있었지만 클러스터에 없던 것 |
@@ -356,7 +356,7 @@ ASM-API 3절과 **같은 파일·형식**(`schemaVersion`, `tool`, `snapshotId`,
 
 ### 3.7 항상 제외·자동 생성·Helm (`rules.mjs`, 명세 3.4)
 - `isAlwaysExcluded`: 종류가 Secret·Pod·ReplicaSet·ControllerRevision·Endpoints·EndpointSlice·Event·Lease·Node·메트릭이면(CLI는 애초에 목록을 부르지 않음), 또는 `metadata.ownerReferences`가 비어 있지 않으면 제외.
-- `isAutoCreated`: ConfigMap `kube-root-ca.crt`, `default` 네임스페이스의 Service `kubernetes`, ServiceAccount `default` 중 (정리 후) 어노테이션·`imagePullSecrets`·`automountServiceAccountToken`이 없는 것, 이름이 `system:`·`eks:`로 시작하는 Role/RoleBinding/ClusterRole/ClusterRoleBinding, 레이블 `kubernetes.io/bootstrapping=rbac-defaults`, `system-` 접두어 PriorityClass. 최종 목록은 구현에서 EKS 1.30~1.34로 확인해 README에 적는다.
+- `isAutoCreated`: ConfigMap `kube-root-ca.crt`, `default` 네임스페이스의 Service `kubernetes`, ServiceAccount `default` 중 (정리 후) 어노테이션·`imagePullSecrets`·`automountServiceAccountToken`이 없는 것, 이름이 `system:`로 시작하는 Role/RoleBinding/ClusterRole/ClusterRoleBinding, 레이블 `kubernetes.io/bootstrapping=rbac-defaults`, `system-` 접두어 PriorityClass. 최종 목록은 구현에서 대상 클러스터(쿠버네티스 1.30~1.34)로 확인해 README에 적는다. (`eks:` 접두어 제외 규칙은 **EKS 잔재**다 — kOps에는 매칭되는 객체가 없어 남겨도 무해하지만 혼란을 줄이려 다음 정리 때 삭제한다.)
 - `isHelmManaged`: 레이블 `app.kubernetes.io/managed-by: Helm`. `includeHelmManaged: false`면 제외하고 수만 기록. Helm 릴리스 Secret은 Secret이라 애초에 읽지 않는다.
 - 드리프트의 "추가됨" 판정(10.3)이 같은 함수를 쓴다.
 
@@ -398,7 +398,7 @@ deploy/k8s-snapshot/
 | `KUBE_CONTEXT` | `--context` | **필수** | 비우면 종료코드 2. current-context를 쓰지 않는다(AC-K01). kubeconfig에 없는 이름이면 2 |
 | `SNAPSHOT_NAMESPACES` | `--namespaces` | (없음) | 포함 목록(쉼표) |
 | `SNAPSHOT_EXCLUDE_NAMESPACES` | `--exclude-namespaces` | (없음) | 제외 목록. 포함과 동시 지정이면 2 |
-| `SNAPSHOT_SYSTEM_NAMESPACES` | `--system-namespaces` | `kube-system,kube-public,kube-node-lease,amazon-cloudwatch` | api `SYSTEM_NAMESPACES` 기본값과 같음 |
+| `SNAPSHOT_SYSTEM_NAMESPACES` | `--system-namespaces` | `kube-system,kube-public,kube-node-lease` | api `SYSTEM_NAMESPACES` 기본값과 같음(kOps 전환으로 `amazon-cloudwatch` 삭제, AC-KOPS09) |
 | `SNAPSHOT_OPTIONAL_KINDS` | `--optional-kinds` | (없음) | 3.5 선택 종류 |
 | `SNAPSHOT_CUSTOM_RESOURCES` | `--custom-resources` | (없음) | `plural.group` 목록 |
 | `SNAPSHOT_EXCLUDE_KINDS` | `--exclude-kinds` | (없음) | 기본 포함 중 뺄 것 |
@@ -411,12 +411,12 @@ deploy/k8s-snapshot/
 
 ### 4.3 내보내기 전용 읽기 역할 (`rbac/export-readonly.yaml`, 사람이 적용)
 - ClusterRole `sentinel-snapshot-export`: 3.5의 기본·선택 종류에 `get`, `list`만. `watch` 없음. **`secrets` 없음**(Q1), `pods/exec`·`pods/log`·쓰기 동사 없음. `namespaces`는 `get`, `list`(클러스터 ID·범위 판단). 사용자 지정 리소스는 주석 예시.
-- ClusterRoleBinding 대상은 `Group: sentinel-snapshot-exporters`(예시). EKS는 access entry(`aws eks create-access-entry … --kubernetes-groups sentinel-snapshot-exporters`) 또는 `aws-auth`로 IAM 주체를 이 그룹에 연결하는 방법을 README에 적는다.
+- ClusterRoleBinding 대상은 `Group: sentinel-snapshot-exporters`(예시). **kOps에는 EKS access entry 같은 IAM ↔ 그룹 연결 장치가 없다.** 내보내기 전용 읽기 역할은 ClusterRole + **사람 사용자·그룹 바인딩**(인증서 CN/O 또는 OIDC 그룹)으로 안내하고, 그 절차를 README에 적는다.
 - 대시보드의 `sentinel-readonly` 역할·ServiceAccount 토큰을 쓰라고 안내하지 않는다(명세 3.2).
 
 ### 4.4 클러스터 읽기 방식 (`lib/kube.mjs`, AC-K13)
 - **결정: `@kubernetes/client-node`의 `KubeConfig`로 인증만 받고, 요청은 모두 이 모듈의 `getJson(path, query)` 한 함수로 보낸다.** `kubectl`을 실행하지 않는다(설치 여부·버전에 따라 결과가 달라지지 않게, 테스트에서 호출을 가로챌 수 있게).
-  - `kc.loadFromFile`/`loadFromDefault` → `kc.setCurrentContext(KUBE_CONTEXT)` → `kc.applyToFetchOptions`로 인증(EKS exec 플러그인 `aws eks get-token` 포함)을 붙여 `fetch`.
+  - `kc.loadFromFile`/`loadFromDefault` → `kc.setCurrentContext(KUBE_CONTEXT)` → `kc.applyToFetchOptions`로 인증(클라이언트 인증서·토큰·exec 플러그인 등 kubeconfig에 적힌 방식)을 붙여 `fetch`.
   - 응답은 **원본 JSON 그대로**(`ObjectSerializer`를 거치지 않음. 타입 변환·모르는 필드 제거를 피한다).
 - `getJson`은 `method: 'GET'`만, 쿼리는 `limit`·`continue`만 허용한다. `dryRun`·`fieldManager`·`watch` 쿼리를 넣지 않는다. 테스트가 가짜 전송 계층으로 **모든 요청이 GET이고 허용된 경로(목록·단건 get·버전·discovery)인지** 확인한다.
 - 호출 순서: `GET /version` → `GET /api/v1/namespaces/kube-system`(클러스터 ID) → 네임스페이스 목록(`all_except_system`/`exclude`: `GET /api/v1/namespaces`, `include`: 이름마다 `GET /api/v1/namespaces/<ns>`) → 종류 × 네임스페이스마다 `GET /apis/<group>/<version>/namespaces/<ns>/<plural>?limit=500`(continue 반복). 클러스터 범위 선택 종류는 `GET /apis/…/<plural>`. 사용자 지정 리소스는 discovery `GET /apis/<group>`으로 선호 버전을 찾는다.
@@ -441,7 +441,7 @@ deploy/k8s-snapshot/
 - 출력·로그에 값 원문·kubeconfig 경로·서버 URL·토큰을 쓰지 않는다. 오류 메시지는 가림 처리(`https://…` URL은 호스트까지 지움).
 
 ### 4.6 README 목차 (AC-K15)
-1. 폴더 구성 2. 설치 3. 내보내기 전용 읽기 역할·컨텍스트(`rbac/`, EKS access entry) 4. 사용법·설정·종료코드 5. 비밀값 스캔(k8s 규칙, `valueFrom.secretKeyRef`로 바꾸기, allow 주석, "모든 비밀값을 잡는다는 보장 없음") 6. 커밋 전 체크리스트 7. 복원 절차(`secret-refs.json`의 Secret 먼저 → `kubectl diff -f` → `kubectl apply -f`, 사람이. Helm 관리 리소스는 Helm으로) 8. Postgres·PV 데이터(명세 3.9 + DBA 보고서 8절 보강: `pg_dumpall --globals-only`, PowerShell `>` 금지, 볼륨 스냅샷 복원 순서, PITR 범위 밖) 9. git으로 관리 시작하기(U7) 10. 제외 규칙·자동 생성 목록 11. 문제 해결.
+1. 폴더 구성 2. 설치 3. 내보내기 전용 읽기 역할·컨텍스트(`rbac/`, 사람 사용자·그룹 바인딩) 4. 사용법·설정·종료코드 5. 비밀값 스캔(k8s 규칙, `valueFrom.secretKeyRef`로 바꾸기, allow 주석, "모든 비밀값을 잡는다는 보장 없음") 6. 커밋 전 체크리스트 7. 복원 절차(`secret-refs.json`의 Secret 먼저 → `kubectl diff -f` → `kubectl apply -f`, 사람이. Helm 관리 리소스는 Helm으로) 8. Postgres·PV 데이터(명세 3.9 + DBA 보고서 8절 보강: `pg_dumpall --globals-only`, PowerShell `>` 금지, 볼륨 스냅샷 복원 순서, PITR 범위 밖) 9. git으로 관리 시작하기(U7) 10. 제외 규칙·자동 생성 목록 11. 문제 해결.
 
 ### 4.7 CLI 테스트 (`node:test`, 가짜 전송 계층)
 설정 우선순위·필수 컨텍스트(AC-K01·K03), dry-run 무호출(AC-K02), 폴더 구조·파일 이름 인코딩(AC-K04), 정리 규칙(AC-K05, 헤드리스 유지), Secret·항상 제외·소유자 제외(AC-K06), 두 번 내보내기 바이트 동일(AC-K07), 시스템 제외 범위 기록(AC-K08), `k8s-env-literal`(AC-K09), 부분 성공 4(AC-K10), 접속 실패·0개 3(AC-K11), 메타데이터 비노출(AC-K12), **GET 외 요청 0회**(AC-K13), 스캔 결과 동일(AC-K14, api 테스트와 공유 픽스처).
@@ -581,7 +581,7 @@ ASM-API 6.1과 같은 모양에 k8s 필드를 더한다.
     "writable": { "allowed": true, "reasonCode": null, "reasonText": null },
     "lastCheckedAt": "2026-09-19T06:11:58.000Z",
     "limits": { "editMaxBytes": 5242880, "viewMaxBytes": 20971520, "inProgressMinutes": 30, "labelMaxLength": 60, "memoMaxLength": 2000 },
-    "dashboardCluster": { "state": "ok", "id": "7d0c2b1e-3f4a-4c5b-8d6e-9f0a1b2c3d4e", "name": "prod-eks", "context": "prod-eks", "serverVersion": "v1.34.1" },
+    "dashboardCluster": { "state": "ok", "id": "7d0c2b1e-3f4a-4c5b-8d6e-9f0a1b2c3d4e", "name": "prod.k8s.example.com", "context": "prod.k8s.example.com", "serverVersion": "v1.34.1" },
     "latestDrift": { "snapshotId": "20260919-061000", "drift": { "...": "DriftBadge" } }
   },
   "cli": { "...": "6.2 cli" }
@@ -592,7 +592,7 @@ ASM-API 6.1과 같은 모양에 k8s 필드를 더한다.
 |---|---|
 | `summary.status`·`counts` | **파일 상태만**(ASM 3.4 규칙을 k8s 스냅샷에 적용). 드리프트는 넣지 않는다(Q2) |
 | `root.setup` | `not_configured`/`unavailable`일 때: `{ "envVar": "K8S_SNAPSHOT_DIR", "dockerMount": "./deploy/k8s-snapshot/snapshots:/data/k8s-snapshots", "localExample": "K8S_SNAPSHOT_DIR=../../deploy/k8s-snapshot/snapshots", "reasonText": "…" }` |
-| `dashboardCluster` | 대시보드가 연결된 클러스터(요약 띠 "연결된 클러스터"). `state`는 `kube` 출처 상태. `id`는 informer 캐시의 `kube-system` UID(없으면 `null`). `context`는 kubeconfig 현재 컨텍스트 이름(EKS ARN이면 클러스터 이름만) |
+| `dashboardCluster` | 대시보드가 연결된 클러스터(요약 띠 "연결된 클러스터"). `state`는 `kube` 출처 상태. `id`는 informer 캐시의 `kube-system` UID(없으면 `null`). `context`는 kubeconfig 현재 컨텍스트 이름(ARN 형태면 클러스터 이름만). kOps는 보통 클러스터 FQDN이다 |
 | `latestDrift` | 자동 계산 대상 스냅샷의 드리프트 배지(탭 "드리프트 N건"). 대상이 없으면 `null` |
 
 - 설정 없음 구분(ASM-API 6.1 PM 결정)과 같다: live에서 `K8S_SNAPSHOT_DIR`가 비면 `unknown` + `SOURCE_NOT_CONFIGURED`, `root.state = "not_configured"`.
@@ -641,7 +641,7 @@ ASM-API 6.1과 같은 모양에 k8s 필드를 더한다.
         "resultAvailable": true
       },
       "label": null, "memo": null, "notesUpdatedAt": null,
-      "cluster": { "id": "7d0c2b1e-3f4a-4c5b-8d6e-9f0a1b2c3d4e", "context": "sentinel-snapshot", "name": "prod-eks", "serverVersion": "v1.34.1-eks-8a2c1f0", "relation": "same" },
+      "cluster": { "id": "7d0c2b1e-3f4a-4c5b-8d6e-9f0a1b2c3d4e", "context": "sentinel-snapshot", "name": "prod.k8s.example.com", "serverVersion": "v1.34.1", "relation": "same" },
       "scope": { "namespaceMode": "all_except_system", "namespaces": ["batch", "data", "default", "monitoring", "prod"], "missingNamespaces": [], "systemIncluded": [], "kindCount": 17, "optionalKinds": [], "customResources": [], "includeHelmManaged": true },
       "resources": { "current": { "total": 35, "files": 35 }, "atExport": { "total": 35 }, "changedSinceExport": false, "previous": { "snapshotId": "20260918-230000", "total": 34 }, "delta": 1 },
       "helmManaged": 2,
@@ -1077,7 +1077,7 @@ interface ClusterObjectSource {
 | `DEFAULT_STORAGE_CLASS` | PVC | `spec.storageClassName` | 스냅샷에 없고 클러스터에 있음 | "기본 StorageClass가 설정" |
 | `DEFAULT_INGRESS_CLASS` | Ingress | `spec.ingressClassName` | 스냅샷에 없고 클러스터에 있음 | "기본 IngressClass가 설정" |
 
-- EKS·컨트롤러가 붙이는 레이블·어노테이션을 구현 단계에서 더 확인하면 이 표에 추가하고 변경 이력에 적는다(명세 4.4-5).
+- 컨트롤러(kOps 애드온 포함)가 붙이는 레이블·어노테이션을 구현 단계에서 더 확인하면 이 표에 추가하고 변경 이력에 적는다(명세 4.4-5).
 - 사용자별 무시 규칙은 없다(명세 7절). 걸러지지 않는 가짜 차이는 스냅샷 파일 편집으로 맞춘다.
 
 ### 10.6 값 가림 (명세 4.7, AC-K38)
@@ -1141,8 +1141,8 @@ interface ClusterObjectSource {
   "snapshotId": "20260919-061000",
   "drift": { "...": "DriftBadge (mode auto, status warning, counts …)" },
   "lease": null,
-  "target": { "clusterId": "7d0c2b1e-…", "context": "prod-eks", "name": "prod-eks", "serverVersion": "v1.34.1", "sourceState": "ok" },
-  "snapshotCluster": { "id": "7d0c2b1e-…", "context": "sentinel-snapshot", "name": "prod-eks", "serverVersion": "v1.34.1-eks-8a2c1f0" },
+  "target": { "clusterId": "7d0c2b1e-…", "context": "prod.k8s.example.com", "name": "prod.k8s.example.com", "serverVersion": "v1.34.1", "sourceState": "ok" },
+  "snapshotCluster": { "id": "7d0c2b1e-…", "context": "sentinel-snapshot", "name": "prod.k8s.example.com", "serverVersion": "v1.34.1" },
   "rulesVersion": 1,
   "addedCheck": "checked",
   "uncomparable": [
@@ -1233,7 +1233,7 @@ interface FieldDiff {
 | `resources[].summary` | `added`/`deleted`만. 이미지는 클러스터(추가됨) 또는 스냅샷(삭제됨) 쪽 |
 | `resources[].commands` | 스냅샷 파일이 있는 리소스만(`added`는 `null`). 복사용 문자열. 화면이 `file`로 직접 조립해도 된다(경로 기준 `root.displayPath`) |
 | `resources[].fileDocuments` | 그 파일 안 문서 수(보통 1). 2 이상이면 명령이 여러 리소스를 적용한다는 안내 |
-| `snapshotCluster` | 명령 블록 문구 "대상 클러스터를 확인하세요 (스냅샷: prod-eks · 컨텍스트 sentinel-snapshot)"용 |
+| `snapshotCluster` | 명령 블록 문구 "대상 클러스터를 확인하세요 (스냅샷: prod.k8s.example.com · 컨텍스트 sentinel-snapshot)"용 |
 
 **지난 결과 보관 규칙 (디자인 "지난 결과 보기"가 여기에 달림)**
 
@@ -1295,7 +1295,7 @@ ASM-API 10.2와 같은 코드(`SNAPSHOTS_COMMIT_BLOCKED`, `SNAPSHOTS_NEED_REVIEW
 | `CLUSTER_NOT_CONNECTED` | unknown | "클러스터 연결 없음" | `kube`가 `not_configured`/`unavailable` | 불가 |
 | `CLUSTER_SYNCING` | unknown | "클러스터 동기화 중" | `kube`가 `syncing` 또는 비교 가능 informer 미동기화 | 불가 |
 | `DASHBOARD_CLUSTER_UNKNOWN` | unknown | "대시보드 클러스터를 확인할 수 없음 (namespaces 조회 불가)" | `kube-system` UID를 모름 | 불가 |
-| `CLUSTER_MISMATCH` | unknown | "다른 클러스터의 스냅샷 (staging-eks)" | `cluster.id` 다름. 괄호 안은 `cluster.name` → 없으면 `cluster.context` | 불가 |
+| `CLUSTER_MISMATCH` | unknown | "다른 클러스터의 스냅샷 (staging.k8s.example.com)" | `cluster.id` 다름. 괄호 안은 `cluster.name` → 없으면 `cluster.context` | 불가 |
 | `CLUSTER_ID_MISSING` | unknown | "클러스터를 확인할 수 없음" | 메타 없음·손상·`cluster.id` 없음 (Q4) | 불가 |
 | `SNAPSHOT_FILES_PENDING` | unknown | "스냅샷 파일 확인 전" | 파일 상태 unknown(진행 중·읽기 실패) | 불가 |
 | `NO_COMPARABLE_RESOURCES` | unknown | "비교할 수 있는 리소스 없음" | 비교 가능 리소스 0 (해석 실패로 0이 된 경우 포함) | 불가 |
@@ -1408,22 +1408,22 @@ ASM-API 10.2와 같은 코드(`SNAPSHOTS_COMMIT_BLOCKED`, `SNAPSHOTS_NEED_REVIEW
 - 예시 비밀값은 누가 봐도 가짜인 값만(`example-password`, `AKIAIOSFODNN7EXAMPLE`).
 
 ### 14.2 기본 예시 (시나리오 `default`, 최신순)
-mock 대시보드 클러스터: `id = "7d0c2b1e-3f4a-4c5b-8d6e-9f0a1b2c3d4e"`, 이름 `prod-eks`, 버전 `v1.34.1`(cluster mock `info`와 같음). 다른 클러스터 예시: `id = "c3a9e0f2-5b6d-4e7f-8a9b-0c1d2e3f4a5b"`, `staging-eks`.
+mock 대시보드 클러스터: `id = "7d0c2b1e-3f4a-4c5b-8d6e-9f0a1b2c3d4e"`, 이름 `prod.k8s.example.com`, 버전 `v1.34.1`(cluster mock `info`와 같음). 다른 클러스터 예시: `id = "c3a9e0f2-5b6d-4e7f-8a9b-0c1d2e3f4a5b"`, `staging.k8s.example.com`.
 
 | ID | 명세 5.7 번호 | 파일 상태 | 드리프트 |
 |---|---|---|---|
 | `20260919-064500` | 8. `metadata.json` 없음, 마지막 변경 = **항상 서버 시각 − 5분** | unknown (`EXPORT_MAYBE_IN_PROGRESS`) | unknown `SNAPSHOT_FILES_PENDING` (자동 대상 아님: 메타 없음) |
-| `20260919-061000` | 1. prod-eks 최신, 발견 없음 | ok | **자동 대상**, warning "차이 3건 (변경 1 · 삭제 1 · 추가 1)" (14.3) |
-| `20260919-020000` | 9. staging-eks, 발견 없음 | ok | unknown `CLUSTER_MISMATCH` "다른 클러스터의 스냅샷 (staging-eks)" |
+| `20260919-061000` | 1. prod.k8s.example.com 최신, 발견 없음 | ok | **자동 대상**, warning "차이 3건 (변경 1 · 삭제 1 · 추가 1)" (14.3) |
+| `20260919-020000` | 9. staging.k8s.example.com, 발견 없음 | ok | unknown `CLUSTER_MISMATCH` "다른 클러스터의 스냅샷 (staging.k8s.example.com)" |
 | `20260918-230000` | 3. `data/statefulsets/postgres.yaml`의 `POSTGRES_PASSWORD` `value: example-password` | critical (`k8s-env-literal`) | `DRIFT_NOT_COMPUTED` |
 | `20260918-120000` | 4. `prod/secrets/…` 가 아니라 `prod/configmaps/legacy-creds.yaml`에 `kind: Secret` + `stringData` (경로 불일치도 함께) | critical (`k8s-secret-object`) + warning(경로 불일치) | `DRIFT_NOT_COMPUTED` |
 | `20260917-090000` | 6. `metadata.kinds.networkpolicies.result = forbidden` | warning (`PARTIAL_EXPORT`) | `DRIFT_NOT_COMPUTED` |
 | `20260916-150000` | 5. `metadata.json` 손상 | critical (`METADATA_CORRUPT`) | unknown `CLUSTER_ID_MISSING` |
 | `20260915-101010` | 7. `prod/deployments/web.yaml` YAML 구문 오류 + `data/services/pg.yaml`(내용은 `postgres`) 경로 불일치 + 예상 밖 파일 `prod/notes.txt`, `.env` | warning | `DRIFT_NOT_COMPUTED` |
-| `20260912-020000` | 10. 라벨 "EKS 1.34 업그레이드 전"·메모, `prod/deployments/web.yaml` 대시보드 편집(`modifiedByDashboard: true`), Helm 관리 리소스 2개(`monitoring/grafana` Deployment·Service) | ok (정보 `HELM_MANAGED`) | `DRIFT_NOT_COMPUTED` |
-| `20260910-000000` | 2. prod-eks, 발견 없음, 클러스터와 같은 내용 | ok | mock 시작·reset 때 한 번 계산해 둔 **지난 결과** "차이 없음" (`mode: last_result`, `lastResultStatus: ok`, `resultAvailable: true`). "지난 결과 보기"·"다시 계산"을 mock에서 확인할 수 있게 **mock에서는 이 전체 결과를 10분 뒤에도 버리지 않는다**(reset까지 유지) |
+| `20260912-020000` | 10. 라벨 "쿠버네티스 1.34 업그레이드 전"·메모, `prod/deployments/web.yaml` 대시보드 편집(`modifiedByDashboard: true`), Helm 관리 리소스 2개(`monitoring/grafana` Deployment·Service) | ok (정보 `HELM_MANAGED`) | `DRIFT_NOT_COMPUTED` |
+| `20260910-000000` | 2. prod.k8s.example.com, 발견 없음, 클러스터와 같은 내용 | ok | mock 시작·reset 때 한 번 계산해 둔 **지난 결과** "차이 없음" (`mode: last_result`, `lastResultStatus: ok`, `resultAvailable: true`). "지난 결과 보기"·"다시 계산"을 mock에서 확인할 수 있게 **mock에서는 이 전체 결과를 10분 뒤에도 버리지 않는다**(reset까지 유지) |
 
-- 휴지통 1개: `20260901-000000__20260910T010203000Z`(prod-eks, 복원 가능).
+- 휴지통 1개: `20260901-000000__20260910T010203000Z`(prod.k8s.example.com, 복원 가능).
 - 5.7의 "최소 1개씩" 항목을 모두 기본 시나리오에서 동시에 보인다(AC-K41).
 
 ### 14.3 mock 클러스터 쪽 값과 예시 드리프트 (AC-K44)
@@ -1471,7 +1471,7 @@ mock 대시보드 클러스터: `id = "7d0c2b1e-3f4a-4c5b-8d6e-9f0a1b2c3d4e"`, �
 
 | 이름 | 기본 | 설명 |
 |---|---|---|
-| `K8S_SNAPSHOT_DIR` | (없음) | k8s 스냅샷 루트. **비우면 live에서 `not_configured`**. Docker 없이: `../../deploy/k8s-snapshot/snapshots`. compose: `/data/k8s-snapshots`. EKS(`deploy/app.example.yaml`): 넣지 않음 |
+| `K8S_SNAPSHOT_DIR` | (없음) | k8s 스냅샷 루트. **비우면 live에서 `not_configured`**. Docker 없이: `../../deploy/k8s-snapshot/snapshots`. compose: `/data/k8s-snapshots`. 클러스터 안 배포(`deploy/app.example.yaml`): 넣지 않음 |
 | `K8S_SNAPSHOT_LIB_DIR` | `../../deploy/k8s-snapshot/lib` (작업 폴더 기준) | k8s 규칙 lib(2.2). compose: `/opt/k8s-snapshot/lib` |
 | `AWS_SNAPSHOT_LIB_DIR` | (기존) | 스캐너 `scan.mjs` 위치. k8s도 이 값으로 스캐너를 불러온다(규칙 한 벌) |
 | `K8S_SNAPSHOT_WRITE_ENABLED` | `true` | 쓰기 스위치 |
@@ -1526,7 +1526,7 @@ mock 대시보드 클러스터: `id = "7d0c2b1e-3f4a-4c5b-8d6e-9f0a1b2c3d4e"`, �
 - **`deploy/k8s-snapshot/`**: 4절 전부(CLI, lib, rbac, README, `.env.example`, `.gitignore`, 테스트, `snapshots/.gitkeep`).
 - **docker-compose.yml (api)**: 볼륨 `${K8S_SNAPSHOT_HOST_DIR:-./deploy/k8s-snapshot/snapshots}:/data/k8s-snapshots`(**쓰기 가능, `snapshots/`만**), `./deploy/k8s-snapshot/lib:/opt/k8s-snapshot/lib:ro`. 환경 변수 `K8S_SNAPSHOT_DIR: /data/k8s-snapshots`, `K8S_SNAPSHOT_LIB_DIR: /opt/k8s-snapshot/lib`, `K8S_SNAPSHOT_DISPLAY_PATH: deploy/k8s-snapshot/snapshots`, 나머지는 `${…:-}`. `deploy/k8s-snapshot` 전체를 마운트하지 않는다(`.env` 비노출, AC-K26). 호스트 폴더가 없으면 Docker가 빈 폴더를 만들 수 있다 → `snapshots/.gitkeep`을 커밋해 폴더가 항상 있게 한다.
 - **`.env.example` (루트/api)**: 15절 변수.
-- **`deploy/app.example.yaml`**: 넣지 않는다(EKS → `not_configured`).
+- **`deploy/app.example.yaml`**: 넣지 않는다(클러스터 안 배포 → `not_configured`).
 - **`deploy/aws-snapshot/README.md` 8장**: "쿠버네티스 리소스" 행을 "`deploy/k8s-snapshot`으로 내보냄(대시보드 자신의 매니페스트만 `deploy/`)"으로, Postgres 행에 DBA 보강(전역 객체 `pg_dumpall --globals-only`, PowerShell `>` 금지, 볼륨 스냅샷 복원 순서) 반영.
 - **`deploy/rbac.yaml`**: **바꾸지 않는다**(AC-K33).
 - 로그·오류·SSE에 파일 내용·라벨·메모·드리프트 값 금지(1.4). 드리프트 엔진 단위 테스트에 "결과 JSON에 가림 대상 원문이 없다" 검사를 넣는다(AC-K38).
@@ -1610,6 +1610,12 @@ mock 대시보드 클러스터: `id = "7d0c2b1e-3f4a-4c5b-8d6e-9f0a1b2c3d4e"`, �
 목록·요약·휴지통 목록·메뉴는 출처가 없어도 200 + unknown(`common.md` 3.2). 클러스터 연결 문제는 드리프트 배지의 unknown이지 HTTP 오류가 아니다(`POST /drift`만 409).
 
 ## 20. 변경 이력
+- 2026-09-24 (kops-support 계약, backend 3단계): 대상 환경 **EKS → kOps** 문구 정리. **응답·엔드포인트·SSE·에러 코드 변경 없음.**
+  - mock 클러스터 이름 `prod-eks` → `prod.k8s.example.com`, `staging-eks` → `staging.k8s.example.com`(클러스터 ID 짝은 그대로: prod `7d0c2b1e-…`, staging `c3a9e0f2-…`). 서버 버전 예시의 `-eks-…` 접미어 제거(kOps는 순정 버전 문자열).
+  - `cluster.name`·`dashboardCluster.context` 설명을 kOps 기준(클러스터 FQDN)으로. ARN 축약 규칙은 다른 도구로 만든 kubeconfig 대비로 남긴다.
+  - 내보내기 전용 읽기 역할 안내를 **ClusterRole + 사람 사용자·그룹 바인딩**으로 교체(kOps에는 EKS access entry가 없다). `aws eks create-access-entry` 안내 삭제.
+  - `SNAPSHOT_SYSTEM_NAMESPACES` 기본값에서 `amazon-cloudwatch` 삭제(api `SYSTEM_NAMESPACES`와 짝, AC-KOPS09). `isAutoCreated`의 `eks:` 접두어 규칙은 **"EKS 잔재" 주석만 달고 남겨 둔다**(매칭 객체가 없어 무해. 다음 정리 때 삭제).
+  - `deploy/kops-snapshot/`(kOps Cluster·InstanceGroup 스냅샷)은 **다음 범위**다. 이 계약에 넣지 않았다 — 스냅샷 메뉴에 탭이 하나 더 붙을 수 있다는 점만 기록한다.
 - 2026-09-19: 최초 작성 (backend, 4단계 계약. 구현 전)
 - 2026-09-19 (5단계 구현, backend): **응답 모양이 바뀐 곳 — frontend 확인 필요**
   1. 드리프트 "순서 다름"(10.4): `FieldDiff.path`가 목록 경로 그대로(`spec.template.spec.initContainers`, 이전 초안의 별도 표기 없음), `reason: "순서 다름"`, 양쪽 값 `kind: "list"`. `changed`인데 `reason`이 `null`이 아닌 유일한 경우다.

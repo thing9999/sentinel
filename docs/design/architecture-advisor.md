@@ -1,7 +1,7 @@
 # 화면 설계: architecture-advisor
 
-- 작성: designer, 2026-09-19
-- 명세: `docs/specs/architecture-advisor.md` (결정 반영: 스냅샷의 리소스 이름은 원문 전송 — 가명화 화면 없음)
+- 작성: designer, 2026-09-19 / 고침: 2026-09-24 (`kops-support` — 사전 점검 표에 etcd 볼륨 주석·컨트롤 플레인 규칙 이동 경로, 전송 안내 문구. **화면 구조·컴포넌트는 그대로**)
+- 명세: `docs/specs/architecture-advisor.md` (결정 반영: 스냅샷의 리소스 이름은 원문 전송 — 가명화 화면 없음. 단 **노드 이름은 가명**, `docs/specs/kops-support.md` 3.7.3)
 - 공통: `docs/design/shell.md`, `docs/design/status.md`, `docs/design/components.md` 10절(어드바이저 전용), `docs/design/tokens.json` (`color.*.advisor`)
 - 그리드: 12열, gutter 16px.
 
@@ -104,6 +104,10 @@ PageHeader: "어드바이저"   보조 줄: 어드바이저는 제안만 합니�
 - 펼친 행: 대상 리소스 목록(ResourceName 칩 목록, 최대 20개 + `외 N개`), 근거 수치(KeyValueList 1열), 절감액 계산식(mono 12 `(0.10 − 0.08) × 50 GB × 3 = $3.00/월`), `서버 계산` 라벨.
 - 이 섹션의 절감액은 모두 **서버 계산 추정**이므로 열 머리글 배지 `추정`, 셀은 `≈`.
 - 0건: 표 자리에 EmptyState sm `circle-check` `사전 점검에서 발견된 항목이 없습니다`.
+- **2026-09-24 `kops-support`**(새 컴포넌트 없음, 표 규칙 그대로):
+  - `R-GP2` 대상 목록에 etcd 볼륨이 섞이면 그 대상 칩 뒤에 neutral Chip `etcd 볼륨`(`database` 12px)을 붙이고, 펼친 행 근거 아래 caption `text.secondary` 한 줄 `etcd는 IOPS에 민감합니다 — 전환 시 성능 확인이 필요합니다.`를 둔다(AC-KOPS42). 심각도·색은 그대로다(주의 신호가 아니라 주석이다).
+  - 컨트롤 플레인 규칙(`R-CP-HA`, `R-CP-SPOT`, `R-CP-RESTART`)의 대상은 마스터 노드·구성요소 파드다. 대상 칩은 `ResourceName kind=node`/`kind=pod` 그대로 쓰고, 행을 누르면 `/cluster/nodes#control-plane`으로 간다.
+  - `R-EKSVER`는 없어졌다. 규칙 ID 목록을 화면에 하드코딩하지 않으므로(서버 값) 표 규칙은 바뀌지 않는다.
 
 ### 2.4 RunProgressPanel (분석 진행)
 
@@ -239,7 +243,7 @@ API 값은 `docs/api/architecture-advisor.md` A.9(`status` / `failureReason`). �
 | 영역 | 사양 |
 |---|---|
 | 머리 | 제목 `보낼 데이터 미리보기`, 부제 `13:40 생성 · 48.2 KB` |
-| 전송 안내 | InlineAlert(info) 고정: `이 데이터는 호스트의 Claude Code를 거쳐 Anthropic으로 전송됩니다. 네임스페이스·워크로드·노드그룹 이름은 원문 그대로 전송됩니다. 비밀값·환경 변수·command/args·어노테이션 원문·IP·계정 ID는 포함되지 않습니다.` |
+| 전송 안내 | InlineAlert(info) 고정: `이 데이터는 호스트의 Claude Code를 거쳐 Anthropic으로 전송됩니다. 네임스페이스·워크로드·노드그룹(kOps InstanceGroup) 이름은 원문 그대로 전송됩니다. 노드 이름은 가명으로 바꿉니다. 비밀값·환경 변수·command/args·어노테이션 원문·IP·인스턴스 ID·계정 ID는 포함되지 않습니다.` (2026-09-24 `kops-support`: kOps에서는 노드 이름이 EC2 인스턴스 ID(`i-0…`)가 되므로 가명 처리 사실을 문구에 드러낸다, AC-KOPS44) |
 | 메타 칩 | `가림 1건`(warn), `생략 12개`(neutral), `관측 60분`, `데이터 소스 live` |
 | 탭 | `요약 | JSON` |
 | 요약 탭 | KeyValueList: 클러스터·노드 수·워크로드 수·PVC 수·LB 수·이벤트 reason 수·DB·비용 요약·사전 점검 건수. 각 영역 옆 `JSON에서 보기` 링크 |

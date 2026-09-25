@@ -1,7 +1,9 @@
 import {
   cleanImage,
+  hasInstanceId,
   isIpLikeNodeName,
   looksSecret,
+  needsNodePseudonym,
   REDACTED,
   sanitizeSnapshot,
 } from './sanitize-snapshot';
@@ -246,5 +248,116 @@ describe('looksSecret', () => {
   it('IP 형태 노드 이름 판별', () => {
     expect(isIpLikeNodeName('ip-10-0-12-34.ec2.internal')).toBe(true);
     expect(isIpLikeNodeName('worker-a')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC-KOPS44: 인스턴스 ID 형태 노드 이름 가명 처리 (계약 B.2 P1~P4)
+// ---------------------------------------------------------------------------
+
+describe('노드 이름 가명 판정 P1~P4', () => {
+  it.each([
+    ['ip-10-0-12-34.ap-northeast-2.compute.internal', true, 'P1'],
+    ['ip-10-0-12-34', true, 'P1'],
+    ['10.0.12.34', true, 'P2'],
+    ['i-0a1b2c3d', true, 'P3 (8자리 구형식)'],
+    ['i-0a1b2c3d4e5f67890', true, 'P3 (17자리)'],
+    ['I-0A1B2C3D4E5F67890', true, 'P3 대소문자 무시'],
+    ['i-0a1b2c3d4e5f67890.ap-northeast-2.compute.internal', true, 'P4'],
+    ['worker-seoul-01', false, '사람이 붙인 이름'],
+    ['node-1', false, '이미 가명'],
+  ])('%s → %s (%s)', (name, expected) => {
+    expect(needsNodePseudonym(name)).toBe(expected);
+  });
+});
+
+describe('인스턴스 ID 가명 처리 (AC-KOPS44)', () => {
+  const build = () =>
+    sanitizeSnapshot({
+      meta: { generatedAt: '2026-09-24T05:00:00.000Z', dataSource: 'mock' },
+      cluster: { version: '1.34', workerCount: 2, controlPlaneCount: 1 },
+      nodes: [
+        {
+          name: 'i-0a1b2c3d4e5f67890',
+          role: 'worker',
+          nodeGroup: 'nodes-ap-northeast-2a',
+          cpu: {},
+          memory: {},
+          allocatable: {},
+        },
+        {
+          name: 'i-0c3d4e5f6a7b8c9d0',
+          role: 'control_plane',
+          nodeGroup: 'control-plane-ap-northeast-2a',
+          cpu: {},
+          memory: {},
+          allocatable: {},
+        },
+        // 노드그룹을 모르는 노드도 예외 없이 가명이다
+        {
+          name: 'i-0999888877776666a',
+          role: 'worker',
+          nodeGroup: null,
+          cpu: {},
+          memory: {},
+          allocatable: {},
+        },
+      ],
+      prechecks: [
+        {
+          ruleId: 'R-NODEIDLE',
+          category: 'cost',
+          severity: 'medium',
+          summary: 'i-0a1b2c3d4e5f67890 유휴',
+          targets: [
+            { kind: 'Node', namespace: null, name: 'i-0a1b2c3d4e5f67890' },
+          ],
+          evidence: [
+            {
+              field: 'nodes[i-0a1b2c3d4e5f67890].cpu.requestsPct',
+              value: 8,
+              text: 'i-0a1b2c3d4e5f67890 CPU 평균 8%',
+            },
+          ],
+        },
+      ],
+    });
+
+  it('노드 이름·대상·자유 문장까지 모두 가명이 된다', () => {
+    const { snapshot, pseudonyms } = build();
+    expect(snapshot.nodes[0].name).toBe('nodes-ap-northeast-2a-node-1');
+    expect(snapshot.nodes[1].name).toBe('control-plane-ap-northeast-2a-node-1');
+    // nodeGroup이 null이어도 원문을 쓰지 않는다
+    expect(snapshot.nodes[2].name).toBe('node-1');
+    expect(snapshot.prechecks[0].targets[0].name).toBe(
+      'nodes-ap-northeast-2a-node-1',
+    );
+    // 문자열 전체 스캔 (P4)
+    expect(snapshot.prechecks[0].summary).toBe(
+      'nodes-ap-northeast-2a-node-1 유휴',
+    );
+    expect(snapshot.prechecks[0].evidence[0].text).toBe(
+      'nodes-ap-northeast-2a-node-1 CPU 평균 8%',
+    );
+    expect(snapshot.prechecks[0].evidence[0].field).toBe(
+      'nodes[nodes-ap-northeast-2a-node-1].cpu.requestsPct',
+    );
+    // 매핑은 api 메모리에만 (스냅샷에 들어가지 않는다)
+    expect(pseudonyms.nodes['nodes-ap-northeast-2a-node-1']).toBe(
+      'i-0a1b2c3d4e5f67890',
+    );
+    expect(JSON.stringify(snapshot)).not.toContain('i-0a1b2c3d');
+  });
+
+  it('스냅샷 전문에 인스턴스 ID 패턴이 0건이다 (합격 기준)', () => {
+    const { snapshot } = build();
+    const text = JSON.stringify(snapshot);
+    expect(text.match(/i-[0-9a-f]{8,17}/gi)).toBeNull();
+    expect(hasInstanceId(text)).toBe(false);
+  });
+
+  it('같은 노드는 nodes[]와 prechecks[]에서 같은 가명이다', () => {
+    const { snapshot } = build();
+    expect(snapshot.prechecks[0].targets[0].name).toBe(snapshot.nodes[0].name);
   });
 });

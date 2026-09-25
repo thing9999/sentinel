@@ -17,14 +17,28 @@ export interface SwitchProps {
    * 네이티브 disabled 대신 aria-disabled(포커스 유지) + 툴팁 사유 + aria-describedby.
    */
   disabledReason?: string;
+  /**
+   * (2026-09-25 추가) 스위치 **설명 문장**의 id(공백으로 여러 개). 호출 측이 그린 설명을 스위치에 잇는다 —
+   * settings.md 9절 "설명이 동작의 절반이다"(`끄면 화면에는 계속 쌓입니다`). 비활성 사유가 있으면 그 뒤에 이어 붙는다.
+   */
+  "aria-describedby"?: string;
   className?: string;
 }
 
 /** components.md 4.7. role=switch 버튼. 트랙 32×18, 손잡이 14px. */
-export function Switch({ checked, onChange, label, disabled, disabledReason, className }: Readonly<SwitchProps>) {
+export function Switch({
+  checked,
+  onChange,
+  label,
+  disabled,
+  disabledReason,
+  "aria-describedby": describedBy,
+  className,
+}: Readonly<SwitchProps>) {
   const id = useId();
   const reasonId = useId();
   const soft = Boolean(disabled && disabledReason);
+  const describedByAll = [describedBy, soft ? reasonId : null].filter(Boolean).join(" ") || undefined;
   const root = (
     <div className={cx(styles.switchRoot, className)}>
       <button
@@ -34,7 +48,7 @@ export function Switch({ checked, onChange, label, disabled, disabledReason, cla
         aria-checked={checked}
         disabled={soft ? undefined : disabled}
         aria-disabled={soft ? true : undefined}
-        aria-describedby={soft ? reasonId : undefined}
+        aria-describedby={describedByAll}
         className={cx(styles.switchTrack, checked && styles.switchOn, soft && styles.switchOff)}
         onClick={() => {
           if (!soft) onChange(!checked);

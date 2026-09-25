@@ -18,6 +18,7 @@ import {
   addUtcMonths,
   ymd,
 } from '../cost-util';
+import { CONTROL_PLANE_KIND_LABELS } from '../cost.types';
 import type {
   CeDailyResult,
   RateBaseline,
@@ -31,6 +32,12 @@ import { serviceDisplayName } from '../explorer/service-names';
 export interface RateSpikeSettings {
   baselineDays: number;
   minBaselineHours: number;
+  /**
+   * 기준선에 넣을 표본의 하한 시각(ISO8601 UTC). null이면 제한 없음(= 지금까지와 같은 동작).
+   * 비용 정의가 바뀐 시점(EKS 관리 요금 → kOps 컨트롤 플레인 실비)을 넘겨
+   * 옛 정의의 표본이 중앙값에 섞여 가짜 급증/급감이 나오는 것을 막는다 (DBA 결정 C).
+   */
+  baselineFrom?: string | null;
   warnRatio: number;
   warnAbsUsdPerHour: number;
   critRatio: number;
@@ -56,12 +63,19 @@ export interface BudgetSettings {
 // A. 소모율 급증
 // ---------------------------------------------------------------------------
 
+/** 기준선 표본의 하한 시각 (baselineDays와 baselineFrom 중 **늦은** 쪽) */
+export function baselineSince(now: Date, s: RateSpikeSettings): number {
+  const byDays = now.getTime() - s.baselineDays * 86_400_000;
+  const from = s.baselineFrom ? Date.parse(s.baselineFrom) : NaN;
+  return Number.isFinite(from) ? Math.max(byDays, from) : byDays;
+}
+
 export function computeRateBaseline(
   samples: RateSample[],
   now: Date,
   s: RateSpikeSettings,
 ): RateBaseline {
-  const since = now.getTime() - s.baselineDays * 86_400_000;
+  const since = baselineSince(now, s);
   const window = samples.filter(
     (x) =>
       x.sampledAt.getTime() >= since && x.sampledAt.getTime() <= now.getTime(),
@@ -286,8 +300,12 @@ function addedText(r: SampleResource): string {
       return `로드밸런서 추가 (${LB_KO[r.type ?? ''] ?? r.type ?? '?'})`;
     case 'ipv4':
       return `퍼블릭 IPv4 +${r.type ?? '1'}개`;
-    case 'eks':
-      return 'EKS 컨트롤 플레인 추가';
+    case 'controlPlane':
+      return `${
+        CONTROL_PLANE_KIND_LABELS[
+          r.option as keyof typeof CONTROL_PLANE_KIND_LABELS
+        ] ?? '컨트롤 플레인'
+      } 추가`;
     default:
       return `${r.kind} 추가`;
   }
@@ -304,8 +322,12 @@ function removedText(r: SampleResource): string {
       return `로드밸런서 삭제 (${LB_KO[r.type ?? ''] ?? r.type ?? '?'})`;
     case 'ipv4':
       return `퍼블릭 IPv4 -${r.type ?? '1'}개`;
-    case 'eks':
-      return 'EKS 컨트롤 플레인 삭제';
+    case 'controlPlane':
+      return `${
+        CONTROL_PLANE_KIND_LABELS[
+          r.option as keyof typeof CONTROL_PLANE_KIND_LABELS
+        ] ?? '컨트롤 플레인'
+      } 삭제`;
     default:
       return `${r.kind} 삭제`;
   }
@@ -325,10 +347,15 @@ function changedText(b: SampleResource, a: SampleResource): string {
       return `로드밸런서 종류 ${LB_KO[b.type ?? ''] ?? b.type} → ${LB_KO[a.type ?? ''] ?? a.type}`;
     case 'ipv4':
       return `퍼블릭 IPv4 ${b.type ?? '?'}개 → ${a.type ?? '?'}개`;
-    case 'eks':
-      return a.type === 'extended'
-        ? 'EKS 확장 지원 단가로 전환'
-        : 'EKS 표준 지원 단가로 전환';
+    case 'controlPlane': {
+      const label =
+        CONTROL_PLANE_KIND_LABELS[
+          a.option as keyof typeof CONTROL_PLANE_KIND_LABELS
+        ] ?? '컨트롤 플레인';
+      if (a.type !== b.type)
+        return `${label} ${b.type ?? '?'} → ${a.type ?? '?'}`;
+      return `${label} ${b.sizeGiB ?? '?'} GiB → ${a.sizeGiB ?? '?'} GiB`;
+    }
   }
 }
 

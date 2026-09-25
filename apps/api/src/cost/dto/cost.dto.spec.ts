@@ -32,7 +32,7 @@ describe('cost DTO 검증', () => {
         explorer: {
           dailyCallLimit: 30,
           costAllocationTagFilter: {
-            key: 'kubernetes.io/cluster/prod-eks',
+            key: 'kubernetes.io/cluster/prod.k8s.example.com',
             values: ['owned'],
           },
         },

@@ -12,7 +12,15 @@ export * from "./api-map";
 // 1. 셸
 export { AppShell, type AppShellProps } from "./shell/AppShell";
 export { TopBar, type TopBarProps } from "./shell/TopBar";
-export { SideNav, DEFAULT_NAV_ITEMS, formatNavCount, type NavItem, type SideNavProps } from "./shell/SideNav";
+export {
+  SideNav,
+  DEFAULT_NAV_ITEMS,
+  DEFAULT_NAV_FOOTER_ITEMS,
+  formatNavCount,
+  navItemStatusText,
+  type NavItem,
+  type SideNavProps,
+} from "./shell/SideNav";
 export {
   ConnectionIndicator,
   ConnectionBanner,
@@ -52,6 +60,14 @@ export { MoneyValue, RangeValue, type MoneyValueProps, type RangeValueProps } fr
 export { CostKindBadge, type CostKindBadgeProps } from "./cost/CostKindBadge";
 export { MetricTile, type MetricTileProps } from "./cost/MetricTile";
 export { BudgetGauge, type BudgetGaugeProps } from "./cost/BudgetGauge";
+export {
+  COST_CATEGORY_ORDER,
+  COST_CATEGORY_LABEL,
+  CONTROL_PLANE_KIND_ORDER,
+  CONTROL_PLANE_KIND_LABEL,
+  type CostCategory,
+  type ControlPlaneCostKind,
+} from "./cost/costCategory";
 
 // 4. 버튼·입력
 export { Button, type ButtonProps, type ButtonVariant } from "./controls/Button";
@@ -70,6 +86,7 @@ export { SegmentedControl, type SegmentedControlProps, type SegmentedOption } fr
 export { Switch, type SwitchProps } from "./controls/Switch";
 export { FilterBar, type FilterBarProps } from "./controls/FilterBar";
 export { TextField, TextArea, type TextFieldProps, type TextAreaProps } from "./controls/TextField";
+export { SecretInput, type SecretInputProps, type SecretInputMode } from "./controls/SecretInput";
 
 // 5. 오버레이
 export { Tooltip, type TooltipProps } from "./overlay/Tooltip";
@@ -95,6 +112,11 @@ export {
   type ErrorKind,
   type StateSize,
 } from "./feedback/EmptyState";
+export {
+  CollapsibleNotice,
+  type CollapsibleNoticeProps,
+  type NoticeTone,
+} from "./feedback/CollapsibleNotice";
 export { Skeleton, type SkeletonProps } from "./feedback/Skeleton";
 export { Spinner, type SpinnerProps } from "./feedback/Spinner";
 
@@ -374,3 +396,75 @@ export {
 } from "./viz/SceneToolbar";
 export { Scene3DFrame, SCENE_TEXT, MAX_NOTICES, type Scene3DFrameProps } from "./viz/Scene3DFrame";
 export { PlateLabel, type PlateLabelProps, type PlateKind } from "./viz/PlateLabel";
+
+// 18. 컨트롤 플레인 전용 (kops-support, components.md 18절)
+export {
+  ComponentMatrix,
+  columnTooltip,
+  type ComponentMatrixProps,
+  type ComponentMatrixColumn,
+  type ComponentMatrixRow,
+  type ComponentMatrixCell,
+  type CellState,
+} from "./cluster/ComponentMatrix";
+
+// 20. 알림·로그 전용 (alerts·logs, components.md 20절)
+export {
+  AlertItem,
+  type AlertItemProps,
+  type AlertTarget,
+  type AlertDispatch,
+} from "./alerts/AlertItem";
+export { AlertGapRow, type AlertGapRowProps } from "./alerts/AlertGapRow";
+export {
+  ALERT_SEVERITY,
+  DISPATCH_SPEC,
+  GAP_EXPLAIN,
+  GAP_UNKNOWN_PREVIOUS,
+  alertChips,
+  alertItemName,
+  gapAriaLabel,
+  gapRangeText,
+  gapTime,
+  gapTimeSpoken,
+  isDispatchState,
+  trimChips,
+  type AlertChip,
+  type AlertKind,
+  type AlertSeverity,
+  type DispatchState,
+} from "./alerts/alertModel";
+export { LogLineList, type LogLineListProps } from "./logs/LogLineList";
+export { RedactionNotice, type RedactionNoticeProps } from "./logs/RedactionNotice";
+export {
+  LOG_ANCHOR_SEPARATOR_HEIGHT,
+  LOG_CONFIDENCE_LABEL,
+  LOG_GUTTER_WIDTH,
+  LOG_LINE_HEIGHT,
+  LOG_REDACTION_NOTICE,
+  LOG_REDACTION_NO_RAW,
+  anchorScrollTop,
+  findMatches,
+  formatLogTime,
+  indexAtOffset,
+  isNoticeLine,
+  lineOffsets,
+  lineText,
+  logAnchorTimeText,
+  logLineSrText,
+  logListAnchor,
+  logVisibleRange,
+  maskedCount,
+  maskedRules,
+  noticeText,
+  prefixText,
+  splitByMatches,
+  truncatedTail,
+  type LogAnchorState,
+  type LogLine,
+  type LogLineKind,
+  type LogListAnchor,
+  type LogRuleRef,
+  type LogSegment,
+  type LogSource,
+} from "./logs/logLineModel";

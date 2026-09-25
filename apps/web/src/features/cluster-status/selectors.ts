@@ -6,7 +6,7 @@ import { statusFromApi, type Status } from "@/components/ui";
 
 import type { ApiStatusValue, ResourceRef, StatusInfo } from "../common/types";
 import type { MetricsState } from "../stream/reducer";
-import type { EventItem, NodeItem, PodItem, WorkloadItem } from "./types";
+import type { EventItem, NodeItem, NodeRole, PodItem, WorkloadItem } from "./types";
 
 /** status.md 1.5 화면 정렬 순서 (나쁜 것 먼저): crit → warn → unknown → stale → ok */
 const RANK: Record<Status, number> = { crit: 0, warn: 1, unknown: 2, stale: 3, ok: 4 };
@@ -80,6 +80,31 @@ export function parseStatusFilter(v: string | null): Status[] {
 export function matchesStatus(info: StatusInfo, filter: readonly Status[]): boolean {
   if (filter.length === 0) return true;
   return filter.includes(statusFromApi(info.status));
+}
+
+/**
+ * 노드 역할 필터 (`?role=worker|control_plane|all`, 기본 `worker`).
+ * cluster-status.md 3.1 / PM 결정 Q4 — "총 N대"가 항상 워커 기준이라 개요·비용과 숫자가 일치한다.
+ */
+export type NodeRoleFilter = NodeRole | "all";
+
+export function parseRoleFilter(v: string | null): NodeRoleFilter {
+  return v === "control_plane" || v === "all" ? v : "worker";
+}
+
+/**
+ * 역할별 노드 분류. `cluster.snapshot.nodes`에는 마스터가 함께 들어 있고(계약 8.2)
+ * 어떤 노드가 마스터인지는 **서버가 준 `role`** 로만 정한다(이름·라벨로 추론하지 않는다).
+ */
+export function splitByRole(nodes: readonly NodeItem[]): {
+  worker: NodeItem[];
+  control_plane: NodeItem[];
+  all: NodeItem[];
+} {
+  const worker: NodeItem[] = [];
+  const control_plane: NodeItem[] = [];
+  for (const n of nodes) (n.role === "control_plane" ? control_plane : worker).push(n);
+  return { worker, control_plane, all: [...nodes] };
 }
 
 export function parseList(v: string | null): string[] {
@@ -168,6 +193,7 @@ export function podUsage(
 
 export const AREA_LABEL: Record<string, string> = {
   node: "노드",
+  control_plane: "컨트롤 플레인",
   workload: "워크로드",
   pod: "파드",
   event: "이벤트",

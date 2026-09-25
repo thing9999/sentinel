@@ -35,6 +35,7 @@ function scenario() {
         capacityType: 'on_demand',
         zone: 'ap-northeast-2a',
         nodeGroup: 'g',
+        role: 'worker',
         architecture: 'amd64',
         allocatable: { cpuMillicores: 2000, memoryBytes: 8 * GI },
       },
@@ -45,6 +46,7 @@ function scenario() {
         capacityType: 'on_demand',
         zone: 'ap-northeast-2a',
         nodeGroup: 'gpu',
+        role: 'worker',
         architecture: 'amd64',
         allocatable: { cpuMillicores: 4000, memoryBytes: 32 * GI },
       },
@@ -156,24 +158,21 @@ function scenario() {
         dnsName: 's.elb',
         lbType: 'alb',
         tagRefs: [],
-        clusterTags: ['prod-eks'],
+        clusterTags: ['prod.k8s.example.com'],
         healthyTargets: 0,
       },
     ],
-    eks: { name: 'prod-eks', version: '1.34' },
   });
   const est = computeEstimate({
     inventory: inv,
     aws,
     hoursPerMonth: 730,
-    eksSupportTier: 'standard',
-    clusterName: 'prod-eks',
+    clusterName: 'prod.k8s.example.com',
     prices: priceBook({
       onDemand: { 'm6i.large': quote(0.1) }, // g6e는 단가 없음
       ebs: { gp3: { storage: quote(0.1), iops: null, throughput: null } },
       lb: { nlb: quote(0.02), alb: quote(0.03) },
       ipv4: quote(0.005),
-      eks: { standard: quote(0.1), extended: null },
     }),
   });
   return { inv, est };
@@ -207,7 +206,7 @@ describe('computeAllocation (네임스페이스 배분)', () => {
     expect(batch.warnings).toEqual([]);
   });
 
-  it('PVC → 네임스페이스, 루트 볼륨·EKS·IPv4 → 공용(클러스터), 미식별 LB → 공용', () => {
+  it('PVC → 네임스페이스, 루트 볼륨·컨트롤 플레인·IPv4 → 공용(클러스터)', () => {
     const { inv, est } = scenario();
     const a = computeAllocation(est, inv, 730);
     const data = a.rows.find((r) => r.namespace === 'data')!;
@@ -215,12 +214,89 @@ describe('computeAllocation (네임스페이스 배분)', () => {
     const prod = a.rows.find((r) => r.namespace === 'prod')!;
     expect(prod.breakdown.lbUsdPerHour).toBeCloseTo(0.02, 6);
     const sc = a.pinnedRows.find((p) => p.key === 'shared_cluster')!;
-    expect(sc.breakdown.eksUsdPerHour).toBeCloseTo(0.1, 6);
+    // 클러스터 태그가 있고 Service·Ingress에 귀속되지 않는 LB는 api_lb 후보 → 컨트롤 플레인
+    expect(sc.breakdown.controlPlaneUsdPerHour).toBeCloseTo(0.03, 6);
     expect(sc.breakdown.ipv4UsdPerHour).toBeCloseTo(0.005, 6);
     expect(sc.breakdown.storageUsdPerHour).toBeCloseTo((73 * 0.1) / 730, 6);
-    expect(
-      a.pinnedRows.find((p) => p.key === 'shared')?.usdPerHour,
-    ).toBeCloseTo(0.03, 6);
+    expect(a.pinnedRows.find((p) => p.key === 'shared')).toBeUndefined();
+  });
+
+  // AC-KOPS15: 마스터 노드 비용은 파드에 배분하지 않고 공용(클러스터) 행으로
+  it('마스터 노드 비용은 파드에 배분하지 않고 shared_cluster로 간다', () => {
+    const inv = inventory({
+      nodes: [
+        {
+          name: 'w1',
+          providerId: 'aws:///ap-northeast-2a/i-01',
+          instanceType: 'm6i.large',
+          capacityType: 'on_demand',
+          zone: 'ap-northeast-2a',
+          nodeGroup: 'nodes-ap-northeast-2a',
+          role: 'worker',
+          architecture: 'amd64',
+          allocatable: { cpuMillicores: 2000, memoryBytes: 8 * GI },
+        },
+        {
+          name: 'm1',
+          providerId: 'aws:///ap-northeast-2a/i-02',
+          instanceType: 't3.medium',
+          capacityType: 'on_demand',
+          zone: 'ap-northeast-2a',
+          nodeGroup: 'control-plane-ap-northeast-2a',
+          role: 'control_plane',
+          architecture: 'amd64',
+          allocatable: { cpuMillicores: 2000, memoryBytes: 4 * GI },
+        },
+      ],
+      pods: [
+        pod({
+          namespace: 'prod',
+          name: 'web',
+          nodeName: 'w1',
+          cpuMillicores: 1000,
+          memoryBytes: 4 * GI,
+        }),
+        // 마스터 위 컨트롤 플레인 파드: requests가 커도 비용이 배분되지 않는다
+        pod({
+          namespace: 'kube-system',
+          name: 'kube-apiserver-m1',
+          nodeName: 'm1',
+          cpuMillicores: 1000,
+          memoryBytes: 2 * GI,
+        }),
+      ],
+      pvcs: [],
+      loadBalancers: [],
+    });
+    const est = computeEstimate({
+      inventory: inv,
+      aws: awsSnapshot({
+        instances: [
+          instance({ instanceId: 'i-01', instanceType: 'm6i.large' }),
+          instance({ instanceId: 'i-02', instanceType: 't3.medium' }),
+        ],
+      }),
+      hoursPerMonth: 730,
+      clusterName: 'prod.k8s.example.com',
+      prices: priceBook({
+        onDemand: { 'm6i.large': quote(0.1), 't3.medium': quote(0.05) },
+      }),
+    });
+    const a = computeAllocation(est, inv, 730);
+    const sc = a.pinnedRows.find((p) => p.key === 'shared_cluster')!;
+    // 마스터 $0.05 전액이 공용(클러스터)의 컨트롤 플레인 몫
+    expect(sc.breakdown.controlPlaneUsdPerHour).toBeCloseTo(0.05, 6);
+    expect(sc.breakdown.nodeUsdPerHour).toBe(0);
+    // kube-system(마스터 위 파드)에는 노드 비용이 가지 않는다
+    expect(a.rows.find((r) => r.namespace === 'kube-system')).toBeUndefined();
+    const prod = a.rows.find((r) => r.namespace === 'prod')!;
+    expect(prod.breakdown.nodeUsdPerHour).toBeCloseTo(0.05, 6); // (0.5+0.5)/2 × 0.1
+    // 합계는 그대로 성립한다
+    const rowsSum =
+      a.rows.reduce((s, r) => s + r.usdPerHour, 0) +
+      a.pinnedRows.reduce((s, r) => s + r.usdPerHour, 0);
+    expect(Math.abs(rowsSum - est.total.usdPerHour)).toBeLessThan(0.01);
+    expect(est.total.usdPerHour).toBeCloseTo(0.15, 6);
   });
 
   it('배분 합계(미할당·공용 포함) = 추정 합계 (±$0.01)', () => {
@@ -245,8 +321,7 @@ describe('computeAllocation (네임스페이스 배분)', () => {
         aws: w.aws,
         prices: mockPriceBook(sc, w, now),
         hoursPerMonth: 730,
-        eksSupportTier: 'standard',
-        clusterName: 'prod-eks',
+        clusterName: 'prod.k8s.example.com',
       });
       const a = computeAllocation(est, w.inventory, 730);
       const rowsSum =

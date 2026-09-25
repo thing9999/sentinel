@@ -21,7 +21,14 @@ export const TopicSourceProvider = (): ClassDecorator =>
 
 /** mock 시나리오 전환 대상 (POST /api/mock/... — common 계약) */
 export type MockScenarioGroup =
-  'cluster' | 'db' | 'cost' | 'advisor' | 'snapshots' | 'k8s-snapshots';
+  | 'cluster'
+  | 'db'
+  | 'cost'
+  | 'advisor'
+  | 'snapshots'
+  | 'k8s-snapshots'
+  | 'alerts'
+  | 'logs';
 export interface MockScenarioTarget {
   readonly group: MockScenarioGroup;
   readonly scenarios: readonly string[];

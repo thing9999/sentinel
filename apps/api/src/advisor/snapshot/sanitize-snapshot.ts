@@ -15,6 +15,8 @@ import type {
   AdvisorSnapshotV1,
   SnapshotCluster,
   SnapshotContainer,
+  SnapshotControlPlane,
+  SnapshotControlPlaneVolume,
   SnapshotCost,
   SnapshotDb,
   SnapshotLoadBalancer,
@@ -113,9 +115,39 @@ export const emptyPseudonyms = (): PseudonymMap => ({
   loadBalancers: {},
 });
 
+/**
+ * 노드 이름 가명 대상 판정 (계약 B.2 "노드 이름 가명 처리" P1~P4, AC-KOPS44).
+ * kOps는 노드 이름이 EC2 인스턴스 ID(`i-0abc…`)가 될 수 있다(명세 F10).
+ * 인스턴스 ID는 "항상 제외" 대상이므로 **원문으로 나가면 안 된다.**
+ */
+const NODE_NAME_P1 = /^ip-\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3}(\..*)?$/i;
+const NODE_NAME_P2 = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+const NODE_NAME_P3 = /^i-[0-9a-f]{8}(?:[0-9a-f]{9})?$/i;
 const IPV4 = /\b\d{1,3}(?:[.-]\d{1,3}){3}\b/;
+/** P4: 문자열 안에 섞인 인스턴스 ID (부분 일치) */
+const INSTANCE_ID_SRC = 'i-[0-9a-f]{8}(?:[0-9a-f]{9})?';
+/** 문자열 안에 섞인 EC2 사설 DNS 이름 */
+const IP_NAME_SRC = 'ip-\\d{1,3}-\\d{1,3}-\\d{1,3}-\\d{1,3}(?:\\.[a-z0-9.-]+)?';
+
+/** 인스턴스 ID 형태(P3·P4)를 담고 있는가. 검증(0건 확인)에도 쓰는 패턴 */
+export function hasInstanceId(text: string): boolean {
+  return new RegExp(INSTANCE_ID_SRC, 'i').test(text);
+}
+
+/** 가명으로 바꿔야 하는 노드 이름인가 (P1~P4 중 하나라도 맞으면 true) */
+export function needsNodePseudonym(name: string): boolean {
+  return (
+    NODE_NAME_P1.test(name) ||
+    NODE_NAME_P2.test(name) ||
+    NODE_NAME_P3.test(name) ||
+    IPV4.test(name) ||
+    hasInstanceId(name)
+  );
+}
+
+/** @deprecated 구 이름. `needsNodePseudonym`을 쓴다 */
 export function isIpLikeNodeName(name: string): boolean {
-  return /^ip-\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3}/i.test(name) || IPV4.test(name);
+  return needsNodePseudonym(name);
 }
 
 class Pseudonymizer {
@@ -155,15 +187,44 @@ class Pseudonymizer {
   }
 
   node(name: string, nodeGroup: string | null): string {
-    if (!isIpLikeNodeName(name)) return name;
+    if (!needsNodePseudonym(name)) return name;
+    // 노드그룹을 모르면 `node-<n>`. "가명을 만들 수 없으니 원문" 같은 예외는 두지 않는다
     const group =
-      nodeGroup && !isIpLikeNodeName(nodeGroup) ? nodeGroup : 'node';
+      nodeGroup && !needsNodePseudonym(nodeGroup) ? nodeGroup : null;
     return this.alias(
       'nodes',
       name,
-      (n) => `${group}-node-${n}`,
-      `node:${group}`,
+      (n) => (group ? `${group}-node-${n}` : `node-${n}`),
+      `node:${group ?? ''}`,
     );
+  }
+
+  /** 이미 가명이 있으면 그대로, 아니면 노드그룹 없이 새 가명 */
+  nodeRef(name: string): string {
+    const existing = this.reverse.nodes.get(name);
+    if (existing) return existing;
+    return this.node(name, null);
+  }
+
+  /**
+   * 자유 문자열 안의 노드 이름을 가명으로 바꾼다 (P4 + 실제 이름 부분 일치).
+   * 필드 단위 판정만으로는 `"i-0a1b… CPU 평균 8%"` 같은 문장으로 원문이 새 나간다.
+   */
+  maskText(text: string): string {
+    let out = text;
+    // 1) 이미 아는 실제 이름 → 가명 (긴 이름부터: 짧은 이름이 긴 이름의 앞부분일 수 있다)
+    const reals = [...this.reverse.nodes.keys()].sort(
+      (a, b) => b.length - a.length,
+    );
+    for (const real of reals) {
+      if (!out.includes(real)) continue;
+      out = out.split(real).join(this.reverse.nodes.get(real));
+    }
+    // 2) 남은 인스턴스 ID·EC2 사설 DNS 이름 → 새 가명 (노드그룹을 모르므로 node-<n>)
+    for (const src of [INSTANCE_ID_SRC, IP_NAME_SRC]) {
+      out = out.replace(new RegExp(src, 'gi'), (m) => this.nodeRef(m));
+    }
+    return out;
   }
 
   volume(ref: string | null): string | null {
@@ -199,15 +260,73 @@ function usage(v: unknown): SnapshotNodeGroup['cpu'] {
   };
 }
 
-export function copyCluster(v: unknown, nodeCount: number): SnapshotCluster {
+export function copyCluster(
+  v: unknown,
+  counts: { worker: number; controlPlane: number },
+): SnapshotCluster {
   const o = obj(v);
   return {
-    platform: 'eks',
+    platform: 'kops',
     version: strOr(o.version, 'unknown'),
     region: str(o.region),
-    supportTier: oneOf(o.supportTier, ['standard', 'extended'] as const),
-    nodeCount: num(o.nodeCount) ?? nodeCount,
+    // 마스터를 섞어 세면 LLM이 "노드 9대인데 워커 requests가…"처럼 틀린 전제를 세운다
+    workerCount: num(o.workerCount) ?? counts.worker,
+    controlPlaneCount: num(o.controlPlaneCount) ?? counts.controlPlane,
     namespaceCount: numOr(o.namespaceCount),
+    controlPlane: copyControlPlane(o.controlPlane),
+  };
+}
+
+const CP_KINDS = [
+  'kube-apiserver',
+  'kube-controller-manager',
+  'kube-scheduler',
+  'etcd-manager-main',
+  'etcd-manager-events',
+] as const;
+
+export function copyControlPlane(v: unknown): SnapshotControlPlane | null {
+  if (v === null || v === undefined) return null;
+  const o = obj(v);
+  const m = obj(o.masters);
+  return {
+    masters: {
+      readyCount: numOr(m.readyCount),
+      instanceTypes: arr(m.instanceTypes).map((t) => ({
+        type: strOr(obj(t).type, 'unknown'),
+        count: numOr(obj(t).count),
+      })),
+      zones: arr(m.zones).map((z) => ({
+        zone: strOr(obj(z).zone, 'unknown'),
+        count: numOr(obj(z).count),
+      })),
+      capacityType: oneOf(m.capacityType, [
+        'on_demand',
+        'spot',
+        'mixed',
+      ] as const),
+      cpu: usage(m.cpu),
+      memory: usage(m.memory),
+    },
+    components: arr(o.components)
+      .map((c) => {
+        const x = obj(c);
+        const kind = oneOf(x.kind, CP_KINDS);
+        return kind === null
+          ? null
+          : {
+              kind,
+              readyCount: numOr(x.readyCount),
+              expectedCount: numOr(x.expectedCount),
+              restarts24h: numOr(x.restarts24h),
+            };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null),
+    quorumState:
+      oneOf(o.quorumState, ['ok', 'at_risk', 'lost', 'unknown'] as const) ??
+      'unknown',
+    haExpected: bool(o.haExpected),
+    notReporting: numOr(o.notReporting),
   };
 }
 
@@ -248,6 +367,7 @@ export function copyNode(v: unknown, p: Pseudonymizer): SnapshotNode {
   return {
     name: p.node(strOr(o.name, 'unknown'), nodeGroup),
     nodeGroup,
+    role: o.role === 'control_plane' ? 'control_plane' : 'worker',
     instanceType: str(o.instanceType),
     architecture: str(o.architecture),
     capacityType: oneOf(o.capacityType, ['on_demand', 'spot'] as const),
@@ -369,6 +489,20 @@ export function copyUnattached(
   };
 }
 
+export function copyControlPlaneVolume(
+  v: unknown,
+  p: Pseudonymizer,
+): SnapshotControlPlaneVolume {
+  const o = obj(v);
+  return {
+    volumeRef: p.volume(str(o.volumeRef)) ?? 'vol-0',
+    kind: oneOf(o.kind, ['etcd', 'master_root'] as const) ?? 'etcd',
+    volumeType: strOr(o.volumeType, 'unknown'),
+    capacityBytes: numOr(o.capacityBytes),
+    usdPerMonth: num(o.usdPerMonth),
+  };
+}
+
 export function copyLoadBalancer(
   v: unknown,
   p: Pseudonymizer,
@@ -432,7 +566,7 @@ export function copyDb(v: unknown): SnapshotDb | null {
   };
 }
 
-const COST_CATEGORIES = ['ec2', 'ebs', 'lb', 'ipv4', 'eks'] as const;
+const COST_CATEGORIES = ['ec2', 'ebs', 'lb', 'ipv4', 'controlPlane'] as const;
 
 export function copyCost(v: unknown): SnapshotCost | null {
   if (v === null || v === undefined) return null;
@@ -521,7 +655,7 @@ export function copyCost(v: unknown): SnapshotCost | null {
   };
 }
 
-export function copyPrecheck(v: unknown): SnapshotPrecheck {
+export function copyPrecheck(v: unknown, p: Pseudonymizer): SnapshotPrecheck {
   const o = obj(v);
   const savings =
     o.savings === null || o.savings === undefined ? null : obj(o.savings);
@@ -531,11 +665,16 @@ export function copyPrecheck(v: unknown): SnapshotPrecheck {
     severity: oneOf(o.severity, ['high', 'medium', 'low'] as const),
     held: bool(o.held),
     summary: strOr(o.summary),
-    targets: arr(o.targets).map((t) => ({
-      kind: strOr(obj(t).kind, 'Other'),
-      namespace: str(obj(t).namespace),
-      name: strOr(obj(t).name, 'unknown'),
-    })),
+    targets: arr(o.targets).map((t) => {
+      const x = obj(t);
+      const name = strOr(x.name, 'unknown');
+      return {
+        kind: strOr(x.kind, 'Other'),
+        namespace: str(x.namespace),
+        // 노드 대상은 가명으로 (nodes[]와 같은 가명이어야 한다)
+        name: strOr(x.kind) === 'Node' ? p.nodeRef(name) : name,
+      };
+    }),
     evidence: arr(o.evidence).map((e) => {
       const x = obj(e);
       return {
@@ -612,26 +751,32 @@ function keyOf(item: Obj): string | null {
   return null;
 }
 
-function scan(value: unknown, path: string, st: ScanState): unknown {
+function scan(
+  value: unknown,
+  path: string,
+  st: ScanState,
+  p: Pseudonymizer,
+): unknown {
   if (typeof value === 'string') {
     if (looksSecret(value)) {
       st.paths.push(path);
       return REDACTED;
     }
-    return value;
+    // 문자열 전체 스캔: evidence[].text·summary처럼 자유 문장에 섞인 노드 이름도 가명으로
+    return p.maskText(value);
   }
   if (Array.isArray(value)) {
     // 경로 표시에 쓸 키는 가리기 전 값으로 만든다 (경로는 화면 "가린 필드"에만 쓰임, 값은 없음)
     return value.map((item, i) => {
       const k = item && typeof item === 'object' ? keyOf(item as Obj) : null;
       const label = k !== null && !looksSecret(k) ? k : String(i);
-      return scan(item, `${path}[${label}]`, st);
+      return scan(item, `${path}[${label}]`, st, p);
     });
   }
   if (value && typeof value === 'object') {
     const out: Obj = {};
     for (const [k, v] of Object.entries(value as Obj)) {
-      out[k] = scan(v, path ? `${path}.${k}` : k, st);
+      out[k] = scan(v, path ? `${path}.${k}` : k, st, p);
     }
     return out;
   }
@@ -686,12 +831,18 @@ export function sanitizeSnapshot(
       systemNamespacesIncluded: bool(meta.systemNamespacesIncluded),
       pseudonyms: p.counts(),
     },
-    cluster: copyCluster(o.cluster, nodes.length),
+    cluster: copyCluster(o.cluster, {
+      worker: nodes.filter((n) => n.role === 'worker').length,
+      controlPlane: nodes.filter((n) => n.role === 'control_plane').length,
+    }),
     nodeGroups: arr(o.nodeGroups).map(copyNodeGroup),
     nodes,
     workloads: arr(o.workloads).map(copyWorkload),
     storage,
     unattachedVolumes,
+    controlPlaneVolumes: arr(o.controlPlaneVolumes).map((v) =>
+      copyControlPlaneVolume(v, p),
+    ),
     loadBalancers,
     events: {
       windowSec: 3600,
@@ -703,14 +854,16 @@ export function sanitizeSnapshot(
     },
     db: copyDb(o.db),
     cost: copyCost(o.cost),
-    prechecks: arr(o.prechecks).map(copyPrecheck),
+    prechecks: arr(o.prechecks).map((x) => copyPrecheck(x, p)),
   };
   draft.meta.pseudonyms = p.counts();
 
   const st: ScanState = { paths: [] };
-  const scanned = scan(draft, '', st) as AdvisorSnapshotV1;
+  const scanned = scan(draft, '', st, p) as AdvisorSnapshotV1;
   // 메타 값은 서버가 만든 것이므로 원래 값 유지 (스캔 대상에서 제외할 필요 없지만 보정)
   scanned.schemaVersion = 1;
+  // 문자열 스캔에서 가명이 더 생겼을 수 있다
+  scanned.meta.pseudonyms = p.counts();
   const previous = numOr(meta.redactedCount);
   scanned.meta.redactedCount = previous + st.paths.length;
   return { snapshot: scanned, redactedFields: st.paths, pseudonyms: p.map };

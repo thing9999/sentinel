@@ -29,6 +29,7 @@ import {
 } from "@/components/ui";
 
 import { errorBody, useApi } from "../common/hooks";
+import { PodLogsSection } from "../logs/PodLogsSection";
 import { badgeProps, reasonTexts } from "../stream/stale";
 import { nodeHref, podUsage, workloadFocusHref } from "./selectors";
 import { elapsedText, EventsEmptyLine, eventColumns, useClusterView } from "./shared";
@@ -258,6 +259,9 @@ export function PodDetailPage({ namespace, name }: { namespace: string; name: st
         </Grid>
 
         <UsageCharts target="pod" name={name} namespace={namespace} stream={stream} now={now} livePoint={livePoint} height="sm" />
+
+        {/* 로그로 가는 주 동선 (logs.md 9절). 기본 접힘 — 펼쳐야 스트림 슬롯을 쓴다. 그릴지는 서버 `logHref`가 정한다 */}
+        <PodLogsSection namespace={namespace} name={name} logHref={pod.logHref ?? null} />
 
         <Section title="관련 Warning 이벤트">
           {events.length === 0 ? (

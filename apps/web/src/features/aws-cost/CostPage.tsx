@@ -35,7 +35,7 @@ import { CeRefreshButton } from "./CeRefresh";
 import { DailyCard, ProjectionCard, RateChartCard } from "./CostCharts";
 import { BudgetTile, costAltLabel, MonthEndTile, MonthToDateTile, RateTile, SpikeTile } from "./CostKpis";
 import { AllocationTable, CategoryCard, ResourceTable, ServicesTable, SpikeCausesCard } from "./CostTables";
-import { CalcHelp, NotIncludedHelp } from "./help";
+import { CalcHelp, CONTROL_PLANE_NOTICE, NotIncludedHelp } from "./help";
 
 const TOPICS = ["cost"] as const;
 
@@ -139,6 +139,8 @@ export function CostPage() {
             </span>
           }
         >
+          {/* kOps 전환 고정 안내 (계약 3.1.1 / AC-KOPS35). 서버 값이 아니라 화면 상수다 */}
+          <InlineAlert tone="info" compact title={CONTROL_PLANE_NOTICE} />
           {!estimate.available ? (
             <UnknownState
               size="lg"

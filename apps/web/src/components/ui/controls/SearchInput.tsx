@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { cx } from "../cx";
 import { Icon } from "../icons";
@@ -18,6 +18,13 @@ export interface SearchInputProps {
   label?: string;
   /** `/` 단축키로 포커스 (기본 true, 페이지에 하나만 켠다) */
   shortcut?: boolean;
+  /**
+   * (2026-09-25 추가) 입력칸 키 입력. 로그 찾기의 `Enter`(다음)·`Shift+Enter`(이전) 같은 단축키를 붙인다(logs.md 12절).
+   * - `Escape`(입력 지우기)는 컴포넌트가 먼저 처리한다. 그 뒤에 이 함수를 부른다(`e.defaultPrevented` 로 알 수 있다).
+   * - 입력은 `debounceMs` 늦게 `onChange` 로 간다. 치자마자 누른 `Enter` 에서 지금 입력값이 필요하면
+   *   `e.currentTarget.value` 를 읽는다. 한글 조합 중 `Enter`(`e.nativeEvent.isComposing`)는 호출 측이 거른다.
+   */
+  onKeyDown?: (e: ReactKeyboardEvent<HTMLInputElement>) => void;
   className?: string;
 }
 
@@ -30,6 +37,7 @@ export function SearchInput({
   width = 240,
   label,
   shortcut = true,
+  onKeyDown,
   className,
 }: SearchInputProps) {
   const id = useId();
@@ -101,6 +109,7 @@ export function SearchInput({
             setText("");
             emit("", true);
           }
+          onKeyDown?.(e);
         }}
       />
       {text ? (

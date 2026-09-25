@@ -59,6 +59,11 @@ export const PVC_SORT = [
 ] as const;
 
 export class NodesQueryDto extends PageQueryDto {
+  /** 기본 worker (PM 결정 Q4). "총 N대"가 항상 워커 기준이 된다 */
+  @IsOptional()
+  @IsIn(['worker', 'control_plane', 'all'])
+  role?: 'worker' | 'control_plane' | 'all';
+
   @IsOptional()
   @CsvList()
   @IsArray()

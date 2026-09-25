@@ -101,7 +101,16 @@ export interface HealthResponse {
 }
 
 /** mock 시나리오 (common.md 6절) */
-export type MockGroupId = "cluster" | "db" | "cost" | "advisor" | "snapshots" | "k8s-snapshots";
+export type MockGroupId =
+  | "cluster"
+  | "db"
+  | "cost"
+  | "advisor"
+  | "snapshots"
+  | "k8s-snapshots"
+  /** alerts P1 (alerts.md 5절) · logs L1 (logs.md 9절). 상단바 MOCK 배지에는 없고 `/dev/mock` 에서 바꾼다 */
+  | "alerts"
+  | "logs";
 
 export interface MockScenarioOption {
   id: string;
@@ -134,7 +143,13 @@ export type StreamTopic =
   | "advisor"
   | "aws-snapshots"
   | "k8s-snapshots"
-  | "snapshot-menu";
+  | "snapshot-menu"
+  /**
+   * alerts (alerts.md 6절). **모든 페이지가 구독한다**(사이드바 배지·탭 제목).
+   * 이 토픽에는 **이력 목록이 실리지 않는다**(6.1·AC-ALERT37) — 목록은 `/alerts` 화면이 REST 로만 읽는다.
+   * `logs` 토픽은 **없다**: 로그는 전용 연결이고 `?topics=logs` 는 400 이다(logs.md 0.3·7절).
+   */
+  | "alerts";
 export const ALL_TOPICS: readonly StreamTopic[] = [
   "overview",
   "cluster",
@@ -145,6 +160,7 @@ export const ALL_TOPICS: readonly StreamTopic[] = [
   "aws-snapshots",
   "k8s-snapshots",
   "snapshot-menu",
+  "alerts",
 ];
 
 export interface StreamEnvelope<T = unknown> {

@@ -140,6 +140,7 @@ export function buildAdvisorSnapshot(
       cluster?.unattachedVolumes,
       costContrib?.unattachedVolumes,
     ),
+    controlPlaneVolumes: costContrib?.controlPlaneVolumes ?? [],
     loadBalancers: pick(cluster?.loadBalancers, costContrib?.loadBalancers),
     events: { windowSec: 3600, byReason: cluster?.events?.byReason ?? [] },
     db: sections.db ?? null,
@@ -241,7 +242,12 @@ export function summarizeSnapshot(
   }
   const rate = s.cost?.rate.totalUsdPerHour ?? null;
   return {
-    nodeCount: s.cluster.nodeCount || s.nodes.length,
+    workerCount:
+      s.cluster.workerCount ||
+      s.nodes.filter((n) => n.role !== 'control_plane').length,
+    controlPlaneCount:
+      s.cluster.controlPlaneCount ||
+      s.nodes.filter((n) => n.role === 'control_plane').length,
     workloadCount: s.workloads.length + s.meta.omitted.workloads,
     pvcCount: s.storage.length,
     loadBalancerCount: s.loadBalancers.length,

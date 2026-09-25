@@ -31,7 +31,7 @@ const health = (over: Partial<BridgeHealth> = {}): BridgeHealth => ({
   usageLimit: { limited: false, retryAt: null },
   busy: false,
   activeRunId: null,
-  promptVersion: 'advisor-v1',
+  promptVersion: 'advisor-v2',
   ...over,
 });
 const obs = (
@@ -297,7 +297,7 @@ describe('BridgeClient', () => {
     const fetchFn = asFetch((_url: string, init: RequestInit) => {
       seenHeaders = init.headers as Record<string, string>;
       return ndjsonResponse([
-        { type: 'accepted', runId: 'r', at: 'x', promptVersion: 'advisor-v1' },
+        { type: 'accepted', runId: 'r', at: 'x', promptVersion: 'advisor-v2' },
         {
           type: 'progress',
           phase: 'receiving',

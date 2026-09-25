@@ -4,11 +4,11 @@ import {
   type AdvisorSnapshotContributor,
 } from '../common/extension-points';
 import { round1 } from '../common/status';
-import { eksSupportTier } from '../cost/estimate/eks-support';
 import { podKey, workloadKey } from './model';
 import { ClusterStateService } from './state/cluster-state.service';
 import { restartTotal } from './state/cluster-store';
-import { isPodCompleted } from './state/evaluate';
+import { isPodCompleted, type ClusterView } from './state/evaluate';
+import type { SnapshotControlPlane } from '../advisor/snapshot/snapshot.types';
 
 const DAY_MS = 86_400_000;
 const STD_LABELS = [
@@ -23,6 +23,74 @@ const STD_LABELS = [
  * 이미지에서 레지스트리 호스트(계정 ID 포함)와 digest를 뺀다 (architecture-advisor B.2).
  * 예: 123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/api:1.4.2 → api:1.4.2, nginx:1.27 → library/nginx:1.27
  */
+/** 어드바이저 스냅샷의 `cluster.controlPlane` (마스터가 0대면 null) */
+interface UsageStat {
+  avgPct: number | null;
+  maxPct: number | null;
+  requestsPct: number;
+}
+
+function controlPlaneBlock(
+  v: ClusterView,
+  snapNodes: {
+    name: string;
+    role: string;
+    cpu: UsageStat;
+    memory: UsageStat;
+  }[],
+): SnapshotControlPlane | null {
+  const cp = v.controlPlane;
+  if (!cp.found || cp.masters.total === 0) return null;
+  const masters = v.nodes.filter((n) => n.role === 'control_plane');
+  const types = new Map<string, number>();
+  for (const n of masters)
+    if (n.instanceType)
+      types.set(n.instanceType, (types.get(n.instanceType) ?? 0) + 1);
+  const zones = new Map<string, number>();
+  for (const n of masters)
+    if (n.zone) zones.set(n.zone, (zones.get(n.zone) ?? 0) + 1);
+  const caps = new Set(masters.map((n) => n.capacityType));
+  const mine = snapNodes.filter((n) => n.role === 'control_plane');
+  const avg = (xs: (number | null)[]) => stats(xs).avg;
+  const max = (xs: (number | null)[]) => stats(xs).max;
+  return {
+    masters: {
+      readyCount: cp.masters.ready,
+      instanceTypes: [...types].map(([type, count]) => ({ type, count })),
+      zones: [...zones]
+        .map(([zone, count]) => ({ zone, count }))
+        .sort((a, b) => a.zone.localeCompare(b.zone)),
+      capacityType:
+        caps.size === 1
+          ? ([...caps][0] ?? null)
+          : caps.size > 1
+            ? 'mixed'
+            : null,
+      cpu: {
+        avgPct: avg(mine.map((n) => n.cpu.avgPct)),
+        maxPct: max(mine.map((n) => n.cpu.maxPct)),
+        requestsPct: avg(mine.map((n) => n.cpu.requestsPct)) ?? 0,
+      },
+      memory: {
+        avgPct: avg(mine.map((n) => n.memory.avgPct)),
+        maxPct: max(mine.map((n) => n.memory.maxPct)),
+        requestsPct: avg(mine.map((n) => n.memory.requestsPct)) ?? 0,
+      },
+    },
+    components: cp.components.byKind.map((k) => ({
+      kind: k.kind,
+      readyCount: k.ready,
+      expectedCount: k.expected,
+      restarts24h: cp.components.items
+        .filter((c) => c.kind === k.kind)
+        .reduce((a, c) => a + c.restarts.last24h, 0),
+    })),
+    quorumState: cp.masters.quorum.state,
+    haExpected: cp.masters.haExpected,
+    notReporting: cp.masters.items.filter((m) => !m.reporting).length,
+  };
+}
+
 export function stripImage(image: string): string {
   const noDigest = image.split('@')[0];
   const parts = noDigest.split('/');
@@ -80,6 +148,7 @@ export class ClusterAdvisorSnapshot implements AdvisorSnapshotContributor {
       return {
         name: n.name,
         nodeGroup: n.nodeGroup,
+        role: n.role,
         instanceType: n.instanceType,
         architecture: n.architecture,
         capacityType: n.capacityType,
@@ -103,9 +172,10 @@ export class ClusterAdvisorSnapshot implements AdvisorSnapshotContributor {
       };
     });
 
-    // 노드그룹
+    // 노드그룹 (워커 InstanceGroup만. 마스터는 컨트롤 플레인 쪽에서 따로 본다 — kops-support 3.3)
     const groups = new Map<string, typeof nodes>();
     for (const n of nodes) {
+      if (n.role === 'control_plane') continue;
       const g = n.nodeGroup ?? '(none)';
       (groups.get(g) ?? groups.set(g, []).get(g)!).push(n);
     }
@@ -364,12 +434,14 @@ export class ClusterAdvisorSnapshot implements AdvisorSnapshotContributor {
       },
       systemNamespacesIncluded: true,
       cluster: {
-        platform: 'eks',
+        platform: 'kops',
         ...(verMatch ? { version: verMatch[1] } : {}),
         region: info.region,
-        // EKS 지원 등급: 클러스터 버전 기준 (비용 추정과 같은 일정표). 버전을 모르면 null
-        supportTier: verMatch ? eksSupportTier(verMatch[1], new Date()) : null,
-        nodeCount: v.nodes.length,
+        workerCount: v.nodes.filter((n) => n.role === 'worker').length,
+        controlPlaneCount: v.nodes.filter((n) => n.role === 'control_plane')
+          .length,
+        // 마스터 구성 요약: LLM이 직접 집계하지 않게 서버가 미리 계산해 준다 (AC-KOPS43)
+        controlPlane: controlPlaneBlock(v, nodes),
         namespaceCount: namespaces,
       },
       nodeGroups,

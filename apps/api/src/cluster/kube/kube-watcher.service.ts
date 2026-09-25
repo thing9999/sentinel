@@ -114,18 +114,12 @@ export class KubeClientService {
     this.error = error;
   }
 
-  /** kubeconfig 현재 클러스터 이름 (EKS ARN이면 마지막 부분) */
+  /**
+   * kubeconfig 현재 클러스터 이름 (kOps는 보통 FQDN: `prod.k8s.example.com`).
+   * 표시 이름은 `K8S_CLUSTER_NAME`이 있으면 그 값이 우선한다.
+   */
   clusterName(): string | null {
-    const name = this.kc?.getCurrentCluster()?.name ?? null;
-    if (!name) return null;
-    const m = /cluster\/([^/]+)$/.exec(name);
-    return m ? m[1] : name;
-  }
-
-  clusterRegion(): string | null {
-    const name = this.kc?.getCurrentCluster()?.name ?? '';
-    const m = /^arn:aws[^:]*:eks:([a-z0-9-]+):/.exec(name);
-    return m ? m[1] : null;
+    return this.kc?.getCurrentCluster()?.name ?? null;
   }
 }
 
@@ -190,7 +184,8 @@ export class KubeWatcherService
     this.store.info = {
       name: this.client.clusterName(),
       version: null,
-      region: this.client.clusterRegion(),
+      // 리전은 노드 라벨(topology.kubernetes.io/region)에서 채운다 (ClusterStateService.clusterInfo)
+      region: null,
     };
     void this.loadVersion(kc);
     this.setupInformers(kc);

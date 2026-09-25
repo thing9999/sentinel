@@ -59,6 +59,7 @@ import {
   Save,
   Search,
   Server,
+  ServerCog,
   ServerCrash,
   Settings,
   Shield,
@@ -80,6 +81,8 @@ import {
   WrapText,
   X,
   Zap,
+  Activity,
+  ArrowDownToLine,
   Bot,
   Briefcase,
   ChevronsDownUp,
@@ -92,12 +95,15 @@ import {
   Globe,
   Grid2x2,
   HardDrive,
+  Inbox,
   Layers,
   Link,
   Link2Off,
   Maximize,
   Network,
+  Repeat,
   ScrollText,
+  Send,
   Settings2,
   Shapes,
   ShipWheel,
@@ -187,6 +193,8 @@ const ICONS = {
   timer: Timer,
   hourglass: Hourglass,
   settings: Settings,
+  /** 컨트롤 플레인(마스터 노드) 표시용 중립 칩 아이콘 (status.md 1.3, kops-support) */
+  "server-cog": ServerCog,
   "server-crash": ServerCrash,
   "external-link": ExternalLink,
   "refresh-cw": RefreshCw,
@@ -243,6 +251,13 @@ const ICONS = {
   "user-round": UserRound,
   "scroll-text": ScrollText,
   link: Link,
+  // 알림·로그·설정 (components.md 13절, alerts·logs 2026-09-25)
+  /** 사이드바 `알림` — `bell` 계열은 `이벤트`(bell-ring)와 20px 에서 갈리지 않는다 */
+  inbox: Inbox,
+  send: Send,
+  repeat: Repeat,
+  activity: Activity,
+  "arrow-down-to-line": ArrowDownToLine,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

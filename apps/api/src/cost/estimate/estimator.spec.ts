@@ -17,6 +17,7 @@ const node = (
   name,
   providerId: `aws:///ap-northeast-2a/${id}`,
   instanceType: 'm6i.large',
+  role: 'worker',
   capacityType: 'on_demand',
   zone: 'ap-northeast-2a',
   nodeGroup: 'general',
@@ -27,8 +28,7 @@ const node = (
 
 const base = {
   hoursPerMonth: 730,
-  eksSupportTier: 'standard' as const,
-  clusterName: 'prod-eks',
+  clusterName: 'prod.k8s.example.com',
 };
 
 describe('computeEstimate (단가 계산)', () => {
@@ -291,7 +291,7 @@ describe('computeEstimate (단가 계산)', () => {
             dnsName: 'x',
             lbType: 'nlb',
             tagRefs: [],
-            clusterTags: ['prod-eks'],
+            clusterTags: ['prod.k8s.example.com'],
             healthyTargets: 0,
           },
           {
@@ -306,17 +306,30 @@ describe('computeEstimate (단가 계산)', () => {
       }),
       prices: priceBook({ lb: { alb: quote(0.0252), nlb: quote(0.0252) } }),
     });
-    expect(r.resources.lb.map((l) => l.name)).toEqual(['alb-1', 'nlb-shared']);
+    // 클러스터 태그만 있고 Service·Ingress에 귀속되지 않는 LB는 API 서버 LB 후보다 (추정)
+    expect(r.resources.lb.map((l) => l.name)).toEqual(['alb-1']);
     expect(r.resources.lb[0].attachedTo).toEqual([
       { kind: 'Ingress', namespace: 'prod', name: 'api' },
     ]);
+    const apiLb = r.resources.controlPlane.filter((x) => x.kind === 'api_lb');
+    expect(apiLb.map((x) => x.name)).toEqual(['nlb-shared']);
+    expect(apiLb[0].identification).toMatchObject({
+      confidence: 'assumed',
+      candidateCount: 1,
+    });
+    expect(apiLb[0].notes.map((n) => n.code)).toContain('API_LB_ASSUMED');
+    const cpCat = r.categories.find((c) => c.category === 'controlPlane')!;
+    expect(cpCat.apiLb).toEqual({
+      state: 'assumed',
+      candidateCount: 1,
+      text: 'API 서버 LB로 추정 (1개)',
+    });
     expect(r.outOfCluster.byCategory.lb).toBe(1);
   });
 
-  it('퍼블릭 IPv4·EKS 컨트롤 플레인(확장 지원 단가)', () => {
+  it('퍼블릭 IPv4 (kOps에는 컨트롤 플레인 관리 요금이 없다)', () => {
     const r = computeEstimate({
       ...base,
-      eksSupportTier: 'extended',
       inventory: inventory({ nodes: [node('n1', 'i-01')] }),
       aws: awsSnapshot({
         instances: [
@@ -326,20 +339,15 @@ describe('computeEstimate (단가 계산)', () => {
             publicIpv4Count: 2,
           }),
         ],
-        eks: { name: 'prod-eks', version: '1.28' },
       }),
       prices: priceBook({
         onDemand: { 'm6i.large': quote(0.1) },
         ipv4: quote(0.005),
-        eks: { standard: quote(0.1), extended: quote(0.6) },
       }),
     });
     expect(r.resources.ipv4[0]).toMatchObject({ count: 2, usdPerHour: 0.01 });
-    expect(r.resources.eks[0]).toMatchObject({
-      supportTier: 'extended',
-      usdPerHour: 0.6,
-    });
-    expect(r.total.usdPerHour).toBeCloseTo(0.71, 6);
+    expect(r.resources.controlPlane).toHaveLength(0);
+    expect(r.total.usdPerHour).toBeCloseTo(0.11, 6);
     const shares = r.categories.reduce((s, c) => s + c.sharePct, 0);
     expect(Math.abs(shares - 100)).toBeLessThanOrEqual(0.3);
   });
@@ -400,5 +408,190 @@ describe('computeEstimate (단가 계산)', () => {
     expect(needs.ebs).toEqual([
       { volumeType: 'gp3', iops: true, throughput: false },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// kops-support P4: 컨트롤 플레인 분류 (AC-KOPS27~30)
+// ---------------------------------------------------------------------------
+
+describe('컨트롤 플레인 카테고리', () => {
+  const vol = (
+    id: string,
+    inst: string,
+    p: Partial<{ sizeGiB: number; volumeType: string }> = {},
+  ) => ({
+    volumeId: id,
+    volumeType: p.volumeType ?? 'gp3',
+    sizeGiB: p.sizeGiB ?? 20,
+    iops: 3000,
+    throughputMibps: 125,
+    zone: null,
+    state: 'in-use',
+    attachedInstanceIds: [inst],
+    pvcNamespace: null,
+    pvcName: null,
+    csiManaged: false,
+  });
+
+  /** 마스터 3대(각 루트 1 + etcd main/events 2) + 워커 1대 */
+  const world = () => {
+    const nodes: InventoryNode[] = [
+      node('w1', 'i-01'),
+      ...[1, 2, 3].map((i) =>
+        node(`m${i}`, `i-0${i}0`, {
+          role: 'control_plane',
+          instanceType: 't3.medium',
+          nodeGroup: `control-plane-ap-northeast-2${'abc'[i - 1]}`,
+        }),
+      ),
+    ];
+    const instances = [
+      instance({
+        instanceId: 'i-01',
+        instanceType: 'm6i.large',
+        rootVolumeIds: ['vol-w1-root'],
+      }),
+      ...[1, 2, 3].map((i) =>
+        instance({
+          instanceId: `i-0${i}0`,
+          instanceType: 't3.medium',
+          rootVolumeIds: [`vol-m${i}-root`],
+          publicIpv4Count: 1,
+        }),
+      ),
+    ];
+    const volumes = [
+      vol('vol-w1-root', 'i-01', { sizeGiB: 50 }),
+      ...[1, 2, 3].flatMap((i) => [
+        vol(`vol-m${i}-root`, `i-0${i}0`),
+        vol(`vol-m${i}-etcd-main`, `i-0${i}0`),
+        vol(`vol-m${i}-etcd-events`, `i-0${i}0`),
+      ]),
+    ];
+    return { nodes, instances, volumes };
+  };
+
+  const compute = (lbs: unknown[] = []) => {
+    const w = world();
+    return computeEstimate({
+      ...base,
+      clusterName: 'prod.k8s.example.com',
+      inventory: inventory({ nodes: w.nodes }),
+      aws: awsSnapshot({
+        instances: w.instances,
+        volumes: w.volumes,
+        loadBalancers: lbs as never,
+      }),
+      prices: priceBook({
+        onDemand: { 'm6i.large': quote(0.118), 't3.medium': quote(0.052) },
+        ebs: { gp3: { storage: quote(0.0912), iops: null, throughput: null } },
+        ipv4: quote(0.005),
+        lb: { nlb: quote(0.0225), alb: quote(0.0225) },
+      }),
+    });
+  };
+
+  it('마스터 3대면 etcd 볼륨 6개 · 루트 3개 · IPv4 3개로 나뉜다 (AC-KOPS28)', () => {
+    const r = compute();
+    const byKind = (k: string) =>
+      r.resources.controlPlane.filter((x) => x.kind === k);
+    expect(byKind('master_ec2')).toHaveLength(3);
+    expect(byKind('etcd_ebs')).toHaveLength(6);
+    expect(byKind('master_root_ebs')).toHaveLength(3);
+    expect(byKind('master_ipv4')).toHaveLength(3);
+    // etcd main/events 구분은 아직 확인하지 못했다 → null
+    expect(byKind('etcd_ebs').every((x) => x.etcdCluster === null)).toBe(true);
+  });
+
+  it('마스터 리소스가 ec2·ebs·ipv4에 중복으로 잡히지 않는다 (AC-KOPS29)', () => {
+    const r = compute();
+    expect(r.resources.ec2.map((x) => x.nodeName)).toEqual(['w1']);
+    expect(r.resources.ipv4).toHaveLength(0);
+    expect(r.resources.ebs.map((x) => x.volumeId)).toEqual(['vol-w1-root']);
+    // 카테고리 합계 = 전체 추정 소모율
+    const sum = r.categories.reduce((a, c) => a + c.usdPerHour, 0);
+    expect(Math.abs(sum - r.total.usdPerHour)).toBeLessThan(0.01);
+  });
+
+  it('카테고리 순서가 고정이고 byKind 합계 = 카테고리 합계', () => {
+    const r = compute();
+    expect(r.categories.map((c) => c.category)).toEqual([
+      'ec2',
+      'ebs',
+      'lb',
+      'ipv4',
+      'controlPlane',
+    ]);
+    const cp = r.categories.find((c) => c.category === 'controlPlane')!;
+    expect(cp.label).toBe('컨트롤 플레인');
+    const byKindSum = (cp.byKind ?? []).reduce((a, k) => a + k.usdPerHour, 0);
+    expect(Math.abs(byKindSum - cp.usdPerHour)).toBeLessThan(0.000005);
+    expect((cp.byKind ?? []).map((k) => k.kind)).toEqual([
+      'master_ec2',
+      'etcd_ebs',
+      'master_root_ebs',
+      'master_ipv4',
+    ]);
+    // 마스터 EC2 3 × $0.052
+    expect(cp.byKind![0].usdPerHour).toBeCloseTo(0.156, 6);
+  });
+
+  it('api_lb 후보 0개면 행이 없고 apiLb.state = not_found (오류 아님)', () => {
+    const cp = compute().categories.find((c) => c.category === 'controlPlane')!;
+    expect(cp.apiLb).toMatchObject({ state: 'not_found', candidateCount: 0 });
+    expect(cp.notes?.[0].code).toBe('API_LB_NOT_FOUND');
+  });
+
+  it('api_lb 후보 2개 이상이면 전부 넣고 ambiguous 경고 (금액은 합산)', () => {
+    const lbs = [1, 2].map((i) => ({
+      name: `api-lb-${i}`,
+      dnsName: `x${i}`,
+      lbType: 'nlb',
+      tagRefs: [],
+      clusterTags: ['prod.k8s.example.com'],
+      healthyTargets: 3,
+    }));
+    const r = compute(lbs);
+    const rows = r.resources.controlPlane.filter((x) => x.kind === 'api_lb');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].identification).toMatchObject({
+      confidence: 'ambiguous',
+      candidateCount: 2,
+    });
+    expect(rows[0].notes.map((n) => n.code)).toContain('API_LB_AMBIGUOUS');
+    const cp = r.categories.find((c) => c.category === 'controlPlane')!;
+    expect(cp.apiLb).toMatchObject({ state: 'ambiguous', candidateCount: 2 });
+    expect(r.resources.lb).toHaveLength(0);
+    const sum = r.categories.reduce((a, c) => a + c.usdPerHour, 0);
+    expect(Math.abs(sum - r.total.usdPerHour)).toBeLessThan(0.01);
+  });
+
+  it('컨트롤 플레인 리소스의 단가도 조회 목록에 들어간다', () => {
+    const w = world();
+    const dry = computeEstimate({
+      ...base,
+      clusterName: 'prod.k8s.example.com',
+      inventory: inventory({ nodes: w.nodes }),
+      aws: awsSnapshot({
+        instances: w.instances,
+        volumes: w.volumes,
+        loadBalancers: [
+          {
+            name: 'api',
+            dnsName: 'x',
+            lbType: 'nlb',
+            tagRefs: [],
+            clusterTags: ['prod.k8s.example.com'],
+            healthyTargets: 3,
+          },
+        ] as never,
+      }),
+      prices: emptyPriceBook(),
+    });
+    const needs = priceNeedsOf(dry);
+    expect(needs.instanceTypes.sort()).toEqual(['m6i.large', 't3.medium']);
+    expect(needs.lb).toContain('nlb');
+    expect(needs.ipv4).toBe(true);
   });
 });

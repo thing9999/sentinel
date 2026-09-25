@@ -28,9 +28,11 @@ import type {
   K8sSnapshotsSnapshotEvent,
   K8sSnapshotSummary,
 } from "../k8s-snapshots/types";
+import type { AlertBadge, AlertNotice, AlertWatch, AlertsSnapshotPayload } from "../alerts/types";
 import type { SnapshotMenuPayload } from "../snapshot-menu/types";
 import type {
   ClusterSnapshot,
+  ControlPlaneBody,
   DbResponse,
   EventItem,
   MetricsSnapshot,
@@ -124,6 +126,29 @@ export interface K8sSnapshotsStreamState {
   autoTargetId: string | null | undefined;
 }
 
+/**
+ * `alerts` 토픽 상태 (alerts.md 6절). **이력 목록을 들지 않는다.**
+ *
+ * `alerts.snapshot`에 목록이 없는 것만으로는 부족하다 — `alerts.created`/`updated`의 `alert` 객체를
+ * 여기에 쌓으면 알림 화면을 보지 않는 탭도 이력을 메모리에 들게 된다(AC-ALERT37이 막으려는 것).
+ * 그래서 **배지·감시·안내만** 두고 항목은 카운터(`seq`)로만 남긴다. `/alerts` 화면이 그 카운터를 보고
+ * `GET /api/alerts`를 300ms debounce 로 다시 읽는다(계약 11절).
+ */
+export interface AlertsStreamState {
+  badge: AlertBadge;
+  watch: AlertWatch | null;
+  dispatch: AlertsSnapshotPayload["dispatch"] | null;
+  persistence: "database" | "memory" | null;
+  warmup: AlertsSnapshotPayload["warmup"] | null;
+  notices: AlertNotice[];
+  /** `alerts.created`·`updated`·`read` 수 (목록 재조회 키). **항목 객체는 저장하지 않는다** */
+  seq: number;
+  /** `alerts.snapshot` 수 (연결·재연결·시나리오 변경 → 전체 재조회) */
+  resetSeq: number;
+  /** 배지를 한 번이라도 받았는지 (최초 로딩 중에는 배지 자리를 비운다) */
+  loaded: boolean;
+}
+
 export interface StreamState {
   /** 현재 연결의 stream.hello (없으면 null) */
   hello: StreamHello | null;
@@ -149,7 +174,22 @@ export interface StreamState {
   k8sSnapshots: K8sSnapshotsStreamState | null;
   /** `snapshot-menu` 토픽 (사이드바 "스냅샷" 메뉴·탭 배지) */
   snapshotMenu: SnapshotMenuPayload | null;
+  /** `alerts` 토픽 (사이드바 배지·탭 제목). **목록 없음** */
+  alerts: AlertsStreamState;
 }
+
+/** 배지 초기값. 연결이 끊겨도 **0으로 내리지 않으므로** 받기 전에는 `loaded: false`로 자리를 비운다 */
+export const initialAlertsState: AlertsStreamState = {
+  badge: { unreadCount: 0, worstSeverity: null, updatedAt: null },
+  watch: null,
+  dispatch: null,
+  persistence: null,
+  warmup: null,
+  notices: [],
+  seq: 0,
+  resetSeq: 0,
+  loaded: false,
+};
 
 export const initialStreamState: StreamState = {
   hello: null,
@@ -170,6 +210,7 @@ export const initialStreamState: StreamState = {
   snapshots: null,
   k8sSnapshots: null,
   snapshotMenu: null,
+  alerts: initialAlertsState,
 };
 
 export interface StreamEventInput {
@@ -252,6 +293,7 @@ function applyCluster(state: StreamState, type: string, payload: unknown): Strea
       restartObservation: p.restartObservation,
       thresholds: p.thresholds,
       nodes: toMap(p.nodes, (n) => n.name),
+      controlPlane: p.controlPlane,
       workloads: toMap(p.workloads, (w) => w.key),
       pods: toMap(p.pods, (x) => x.key),
       events: toMap(p.events, (e) => e.key),
@@ -274,6 +316,10 @@ function applyCluster(state: StreamState, type: string, payload: unknown): Strea
           thresholds: p.thresholds ?? c.thresholds,
         },
       };
+    }
+    // 기존 `cluster` 토픽의 이벤트다(새 구독 없음). 단일 객체 **전체 교체** (계약 8.2)
+    case "cluster.controlplane.updated": {
+      return { ...state, cluster: { ...c, controlPlane: payload as ControlPlaneBody } };
     }
     case "cluster.node.upsert": {
       const item = (payload as { item: NodeItem }).item;
@@ -609,6 +655,40 @@ function applyStreamEvent(state: StreamState, type: string, payload: unknown, re
   }
 }
 
+/**
+ * `alerts` 토픽 (계약 6절). **항목(`payload.alert`)을 읽지 않는다** — 배지만 꺼내고 카운터를 올린다.
+ * 이 함수에 `alert`를 저장하는 코드를 넣으면 AC-ALERT37이 깨진다(안 보는 탭이 이력을 든다).
+ */
+function applyAlerts(state: StreamState, type: string, payload: unknown): StreamState {
+  const a = state.alerts;
+  if (type === "alerts.snapshot") {
+    const p = payload as AlertsSnapshotPayload;
+    return {
+      ...state,
+      alerts: {
+        ...a,
+        badge: p.badge ?? a.badge,
+        watch: p.watch ?? a.watch,
+        dispatch: p.dispatch ?? a.dispatch,
+        persistence: p.persistence ?? a.persistence,
+        warmup: p.warmup ?? a.warmup,
+        notices: p.notices ?? [],
+        resetSeq: a.resetSeq + 1,
+        seq: a.seq + 1,
+        loaded: true,
+      },
+    };
+  }
+  if (type === "alerts.created" || type === "alerts.updated" || type === "alerts.read") {
+    const badge = (payload as { badge?: AlertBadge })?.badge;
+    return {
+      ...state,
+      alerts: { ...a, badge: badge ?? a.badge, seq: a.seq + 1, loaded: a.loaded || Boolean(badge) },
+    };
+  }
+  return state;
+}
+
 /** 이벤트 하나를 반영한다 */
 export function applyEvent(state: StreamState, input: StreamEventInput): StreamState {
   const { type, envelope, receivedAt } = input;
@@ -649,6 +729,9 @@ export function applyEvent(state: StreamState, input: StreamEventInput): StreamS
     case "snapshot-menu":
       next = applySnapshotMenu(state, type, payload);
       break;
+    case "alerts":
+      next = applyAlerts(state, type, payload);
+      break;
     default:
       next = state;
   }
@@ -678,6 +761,7 @@ export const STREAM_EVENT_TYPES: readonly string[] = [
   "overview.updated",
   "cluster.snapshot",
   "cluster.summary.updated",
+  "cluster.controlplane.updated",
   "cluster.node.upsert",
   "cluster.node.delete",
   "cluster.workload.upsert",
@@ -710,4 +794,8 @@ export const STREAM_EVENT_TYPES: readonly string[] = [
   "k8s-snapshots.drift",
   "snapshot-menu.snapshot",
   "snapshot-menu.updated",
+  "alerts.snapshot",
+  "alerts.created",
+  "alerts.updated",
+  "alerts.read",
 ];

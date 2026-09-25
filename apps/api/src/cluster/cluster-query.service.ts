@@ -151,7 +151,12 @@ export class ClusterQueryService {
 
   nodes(q: NodesQueryDto) {
     const v = this.state.getView();
-    const base = v.nodes.filter(
+    // 기본 worker (계약 3.1). role은 items·total·counts·facets에 모두 적용하고,
+    // roleCounts·facets.roles만 클러스터 전체 기준이다 (AC-KOPS11)
+    const role = q.role ?? 'worker';
+    const inRole =
+      role === 'all' ? v.nodes : v.nodes.filter((n) => n.role === role);
+    const base = inRole.filter(
       (n) =>
         (!q.nodeGroup || q.nodeGroup.includes(n.nodeGroup ?? '')) &&
         (!q.zone || q.zone.includes(n.zone ?? '')) &&
@@ -164,21 +169,45 @@ export class ClusterQueryService {
       (n) => !q.status || q.status.includes(n.status.status),
     );
     filtered.sort(nodeComparator(q.sort));
-    const { meta, items } = paginate(v.nodes.length, filtered, q);
+    const { meta, items } = paginate(inRole.length, filtered, q);
+    const workerCount = v.nodes.filter((n) => n.role === 'worker').length;
     return {
       ...this.head(v),
+      role,
       ...meta,
       counts: { all: base.length, ...countStatuses(base) },
-      facets: {
-        nodeGroups: uniqSorted(v.nodes.map((n) => n.nodeGroup)),
-        zones: uniqSorted(v.nodes.map((n) => n.zone)),
-        capacityTypes: uniqSorted(v.nodes.map((n) => n.capacityType)),
+      roleCounts: {
+        worker: workerCount,
+        control_plane: v.nodes.length - workerCount,
+        all: v.nodes.length,
       },
-      areaStatus: v.areas.nodes.status,
+      facets: {
+        nodeGroups: uniqSorted(inRole.map((n) => n.nodeGroup)),
+        zones: uniqSorted(inRole.map((n) => n.zone)),
+        capacityTypes: uniqSorted(inRole.map((n) => n.capacityType)),
+        // 계약 3.1: 클러스터에 실제로 존재하는 역할 값 (worker 먼저)
+        roles: (['worker', 'control_plane'] as const).filter((r) =>
+          v.nodes.some((n) => n.role === r),
+        ),
+      },
+      areaStatus:
+        role === 'control_plane'
+          ? v.areas.controlPlane.status
+          : v.areas.nodes.status,
       thresholds: this.nodeThresholds(),
       metricsAvailable: v.metrics.available,
       items,
     };
+  }
+
+  /**
+   * 컨트롤 플레인 상세 (계약 3.3). `cluster.controlplane.updated` payload와 같다.
+   * **여기서 항목을 꾸미지 않는다** — `logHref`는 평가 단계에서 채워져 있고 SSE도 같은 객체를 보낸다.
+   * (전에는 이 자리에서만 `logHref`를 채워 SSE 쪽이 항상 null이었다. 2026-09-25 수정)
+   */
+  controlPlane() {
+    const v = this.state.getView();
+    return { ...this.head(v), ...v.controlPlane };
   }
 
   node(name: string) {
@@ -521,6 +550,10 @@ export class ClusterQueryService {
     return {
       ...this.head(v),
       target,
+      // target=cluster 합계는 워커 기준이다 (AC-KOPS13). node·pod에는 없다
+      ...(q.target === 'cluster'
+        ? { scope: { basis: 'worker' as const } }
+        : {}),
       range,
       source: 'in_memory' as const,
       stepSec: this.state.metricsIntervalSec,

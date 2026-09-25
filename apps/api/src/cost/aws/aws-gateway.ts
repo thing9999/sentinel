@@ -2,15 +2,11 @@
  * AWS 호출 경계 (포트). 서비스는 이 인터페이스에만 의존하고 테스트는 가짜 구현을 넣는다.
  * 모든 메서드는 **읽기 전용** API 하나(또는 그 페이지네이션)만 부른다 — CLAUDE.md AWS 권한 목록:
  * pricing:GetProducts, ce:GetCostAndUsage, ce:GetCostForecast, ec2:DescribeInstances,
- * ec2:DescribeVolumes, ec2:DescribeSpotPriceHistory, elasticloadbalancing:Describe*, eks:DescribeCluster
+ * ec2:DescribeVolumes, ec2:DescribeSpotPriceHistory, elasticloadbalancing:Describe*
+ * (kOps 전환: eks:DescribeCluster 없음 — 클러스터 버전은 쿠버네티스 API에서만 읽는다, AC-KOPS08)
  * 반환값은 정리된 최소 필드뿐이다 (원본 응답을 밖으로 내보내지 않음).
  */
-import type {
-  AwsEksCluster,
-  AwsInstance,
-  AwsLoadBalancer,
-  AwsVolume,
-} from '../cost.types';
+import type { AwsInstance, AwsLoadBalancer, AwsVolume } from '../cost.types';
 import type { CauPage } from '../explorer/ce-normalize';
 
 export const COST_AWS_GATEWAY = Symbol('COST_AWS_GATEWAY');
@@ -58,8 +54,6 @@ export interface CostAwsGateway {
   describeVolumes(q: { attachedInstanceIds: string[] }): Promise<AwsVolume[]>;
   /** elasticloadbalancing:DescribeLoadBalancers/DescribeTags/DescribeTargetGroups/DescribeTargetHealth */
   describeLoadBalancers(): Promise<AwsLoadBalancer[]>;
-  /** eks:DescribeCluster */
-  describeEksCluster(name: string): Promise<AwsEksCluster | null>;
   /** pricing:GetProducts (us-east-1 엔드포인트) */
   getProducts(
     serviceCode: string,

@@ -48,14 +48,41 @@ spec:
               value: "3001"
             - name: CORS_ORIGIN
               value: http://localhost:3000
-            - name: EKS_CLUSTER_NAME
-              value: prod-eks
+            - name: K8S_CLUSTER_NAME
+              value: prod.k8s.example.com
             - name: AWS_REGION
               value: ap-northeast-2
             - name: DB_TARGET_NAMESPACE
               value: data
             - name: DB_TARGET_STATEFULSET
               value: postgres
+            # --- logs (컨테이너 로그 조회) -------------------------------------
+            # **클러스터 안 배포는 끈 것이 기본이다** (PM 결정 Q4, docs/reports/logs/README.md).
+            # 로컬 개발(docker compose)과 다른 값인 것이 의도다: 클러스터 안에서는 대시보드에
+            # 접근할 수 있는 사람 = 로그를 볼 수 있는 사람이 되는데, 그 범위를 배포자가
+            # 의식적으로 정하게 하려는 것이다. 켜기 전에 확인할 것:
+            #   ① 이 대시보드에 누가 접근할 수 있는가 (지금은 로그인이 없다)
+            #   ② 가림(마스킹)은 흔한 형태만 잡는다 — 완벽하지 않다 (docs/api/logs.md 3절)
+            #   ③ 켜더라도 LOG_DENY_NAMESPACES로 민감한 네임스페이스를 먼저 막을 수 있다
+            # 끈 상태에서는 GET /api/logs/capabilities만 200(enabled:false)이고
+            # 나머지 /api/logs/*는 403 LOG_DISABLED다. 다른 화면은 영향을 받지 않는다.
+            - name: LOGS_ENABLED
+              value: "false"
+            # 켤 때 함께 정한다 (쉼표 구분). 예: "kube-system,vault"
+            - name: LOG_DENY_NAMESPACES
+              value: ""
+            # --- alerts (상태 알림) ---------------------------------------------
+            # 비우면 DATA_SOURCE를 따른다. 여기서는 live이므로 디스코드로 실제 발송된다.
+            # 주소가 없으면 시도조차 하지 않고 화면 알림 센터에만 쌓인다(오류가 아니다).
+            # 발송을 임시로 멈추려면 이 값을 mock으로 둔다(비상 차단 스위치).
+            - name: ALERTS_DISPATCH
+              value: ""
+            # ALERTS_DISCORD_WEBHOOK_URL은 **비밀값이라 여기 적지 않는다.**
+            # 아래 envFrom의 Secret `sentinel-api`에 넣는다(설정되면 화면 입력이 잠긴다).
+            # 클러스터에서 discord.com:443으로 나갈 수 있는지 확인할 것(egress·NetworkPolicy·프록시).
+            # 나갈 수 없으면 발송이 failed로 기록되고 화면 알림은 정상 동작한다.
+            - name: ALERTS_PUBLIC_BASE_URL
+              value: ""
           envFrom:
             - secretRef:
                 name: sentinel-api

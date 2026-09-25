@@ -13,6 +13,7 @@ function node(
   name: string,
   ready: 'True' | 'False' | 'Unknown',
   sinceAgoMs = 3_600_000,
+  role: RawNode['role'] = 'worker',
 ): RawNode {
   return {
     name,
@@ -21,6 +22,7 @@ function node(
     zone: 'ap-northeast-2a',
     region: 'ap-northeast-2',
     nodeGroup: 'app',
+    role,
     capacityType: 'on_demand',
     architecture: 'amd64',
     kubeletVersion: 'v1.30.2',
@@ -161,6 +163,7 @@ function input(store: ClusterStore, metrics = new MetricsStore()): EvalInput {
     pvcUsageProm: null,
     clusterName: 'test',
     metricsIntervalSec: 15,
+    controlPlaneHaExpected: true,
   };
 }
 
@@ -197,11 +200,67 @@ describe('evaluateCluster', () => {
     expect(v.areas.nodes.ready).toBe(1);
   });
 
-  it('노드 0개면 클러스터 장애', () => {
+  it('워커 0대면 클러스터 장애', () => {
     const v = evaluateCluster(input(storeWith([])));
     expect(v.areas.nodes.status.status).toBe('critical');
-    expect(v.areas.nodes.status.reasons[0].code).toBe('CLUSTER_NO_NODES');
+    expect(v.areas.nodes.status.reasons[0].code).toBe(
+      'CLUSTER_NO_WORKER_NODES',
+    );
     expect(v.overall.status).toBe('critical');
+  });
+
+  // AC-KOPS14: 마스터만 있는 클러스터도 "워커 0대" 장애다
+  it('마스터만 있고 워커가 0대면 장애 (마스터가 Ready여도 유지)', () => {
+    const v = evaluateCluster(
+      input(storeWith([node('m1', 'True', 3_600_000, 'control_plane')])),
+    );
+    expect(v.areas.nodes.status.status).toBe('critical');
+    expect(v.areas.nodes.status.reasons[0].code).toBe(
+      'CLUSTER_NO_WORKER_NODES',
+    );
+    expect(v.areas.nodes.total).toBe(0);
+    expect(v.overall.status).toBe('critical');
+  });
+
+  // AC-KOPS10·12: 워커/마스터 분리 집계
+  it('노드 영역·클러스터 메트릭 합계가 워커 기준이고 마스터는 별도 블록', () => {
+    const v = evaluateCluster(
+      input(
+        storeWith([
+          node('w1', 'True'),
+          node('w2', 'True'),
+          node('m1', 'True', 3_600_000, 'control_plane'),
+          node('m2', 'True', 3_600_000, 'control_plane'),
+          node('m3', 'True', 3_600_000, 'control_plane'),
+        ]),
+      ),
+    );
+    expect(v.areas.nodes.ready).toBe(2);
+    expect(v.areas.nodes.total).toBe(2);
+    expect(v.metrics.scope).toEqual({
+      basis: 'worker',
+      workerNodeCount: 2,
+      controlPlaneNodeCount: 3,
+    });
+    // 워커 2대 × 2000m (마스터 3대를 더하면 10000m가 된다)
+    expect(v.metrics.cpu.allocatableMillicores).toBe(4000);
+    expect(v.metrics.controlPlane).toMatchObject({
+      available: true,
+      nodeCount: 3,
+    });
+    expect(v.metrics.controlPlane.cpu?.allocatableMillicores).toBe(6000);
+    expect(v.nodeMap.get('m1')!.role).toBe('control_plane');
+    expect(v.nodeMap.get('w1')!.role).toBe('worker');
+  });
+
+  it('마스터가 0대면 controlPlane 블록이 available:false', () => {
+    const v = evaluateCluster(input(storeWith([node('w1', 'True')])));
+    expect(v.metrics.controlPlane).toEqual({
+      available: false,
+      nodeCount: 0,
+      cpu: null,
+      memory: null,
+    });
   });
 
   it('CrashLoopBackOff 파드는 장애, 워크로드는 Deployment로 해석', () => {
